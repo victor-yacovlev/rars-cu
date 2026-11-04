@@ -49,7 +49,7 @@ public class RegistersWindow extends RegisterBlockWindow {
     };
 
     public RegistersWindow() {
-        super(getRegisters(), regToolTips, "Current 32 bit value");
+        super(getRegisters(), regToolTips, "Current 32 bit value", true);
     }
 
     /*

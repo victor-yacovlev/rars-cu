@@ -64,7 +64,16 @@ public abstract class RegisterBlockWindow extends JPanel implements Observer {
 
     private static final int NAME_COLUMN = 0;
     private static final int NUMBER_COLUMN = 1;
-    private static final int VALUE_COLUMN = 2;
+    private static final int VALUE_SIGNED_COLUMN = 2;
+    private static final int VALUE_UNSIGNED_COLUMN = 3;
+    private static final int VALUE_HEX_COLUMN = 4;
+
+    /**
+     * When true, the value of each register is shown in two editable columns
+     * (decimal and hexadecimal) that stay in sync with each other. When false,
+     * a single value column is displayed (used by the floating point window).
+     */
+    private final boolean dualValueColumns;
 
     private Settings settings;
 
@@ -73,29 +82,65 @@ public abstract class RegisterBlockWindow extends JPanel implements Observer {
      * Constructor which sets up a fresh window with a table that contains the register values.
      **/
     public RegisterBlockWindow(Register[] registers, String[] registerDescriptions, String valueTip) {
+        this(registers, registerDescriptions, valueTip, false);
+    }
+
+    /**
+     * Constructor which sets up a fresh window with a table that contains the register values.
+     *
+     * @param dualValueColumns if true, shows two value columns: decimal and hexadecimal.
+     **/
+    public RegisterBlockWindow(Register[] registers, String[] registerDescriptions, String valueTip,
+                               boolean dualValueColumns) {
         Simulator.getInstance().addObserver(this);
         settings = Globals.getSettings();
         settings.addObserver(this);
         this.registers = registers;
+        this.dualValueColumns = dualValueColumns;
         clearHighlighting();
+        String[] columnToolTips = dualValueColumns
+                ? new String[]{"Each register has a tool tip describing its usage convention",
+                "Corresponding register number",
+                valueTip + " (signed decimal representation; editing it updates the other representations as well)",
+                valueTip + " (unsigned decimal representation; editing it updates the other representations as well)",
+                valueTip + " (hexadecimal representation; editing it updates the other representations as well)"}
+                : new String[]{"Each register has a tool tip describing its usage convention",
+                "Corresponding register number", valueTip};
         table = new MyTippedJTable(new RegTableModel(setupWindow()), registerDescriptions,
-                new String[]{"Each register has a tool tip describing its usage convention", "Corresponding register number", valueTip}) {
+                columnToolTips) {
         };
         updateRowHeight();
         table.getColumnModel().getColumn(NAME_COLUMN).setPreferredWidth(50);
         table.getColumnModel().getColumn(NUMBER_COLUMN).setPreferredWidth(25);
-        table.getColumnModel().getColumn(VALUE_COLUMN).setPreferredWidth(60);
+        table.getColumnModel().getColumn(VALUE_SIGNED_COLUMN).setPreferredWidth(60);
 
         // Display register values (String-ified) right-justified in mono font
         table.getColumnModel().getColumn(NAME_COLUMN).setCellRenderer(new RegisterCellRenderer(MonoRightCellRenderer.MONOSPACED_PLAIN_12POINT, SwingConstants.LEFT));
         table.getColumnModel().getColumn(NUMBER_COLUMN).setCellRenderer(new RegisterCellRenderer(MonoRightCellRenderer.MONOSPACED_PLAIN_12POINT, SwingConstants.RIGHT));
-        table.getColumnModel().getColumn(VALUE_COLUMN).setCellRenderer(new RegisterCellRenderer(MonoRightCellRenderer.MONOSPACED_PLAIN_12POINT, SwingConstants.RIGHT));
+        table.getColumnModel().getColumn(VALUE_SIGNED_COLUMN).setCellRenderer(new RegisterCellRenderer(MonoRightCellRenderer.MONOSPACED_PLAIN_12POINT, SwingConstants.RIGHT));
+        if (dualValueColumns) {
+            table.getColumnModel().getColumn(VALUE_UNSIGNED_COLUMN).setPreferredWidth(80);
+            table.getColumnModel().getColumn(VALUE_UNSIGNED_COLUMN).setCellRenderer(new RegisterCellRenderer(MonoRightCellRenderer.MONOSPACED_PLAIN_12POINT, SwingConstants.RIGHT));
+            table.getColumnModel().getColumn(VALUE_HEX_COLUMN).setPreferredWidth(70);
+            table.getColumnModel().getColumn(VALUE_HEX_COLUMN).setCellRenderer(new RegisterCellRenderer(MonoRightCellRenderer.MONOSPACED_PLAIN_12POINT, SwingConstants.RIGHT));
+        }
         table.setPreferredScrollableViewportSize(new Dimension(200, 700));
         this.setLayout(new BorderLayout());  // table display will occupy entire width if widened
         this.add(new JScrollPane(table, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED));
     }
 
     protected abstract String formatRegister(Register value, int base);
+
+    /**
+     * Formats the register value as an unsigned decimal string. Subclasses that
+     * use dual value columns rely on this for the unsigned column.
+     */
+    protected String formatUnsignedRegister(Register value) {
+        if (Globals.getSettings().getBooleanSetting(Settings.Bool.RV64_ENABLED)) {
+            return Long.toUnsignedString(value.getValue());
+        }
+        return NumberDisplayBaseChooser.formatUnsignedInteger((int) value.getValue(), NumberDisplayBaseChooser.DECIMAL);
+    }
 
     protected abstract void beginObserving();
 
@@ -109,13 +154,19 @@ public abstract class RegisterBlockWindow extends JPanel implements Observer {
      **/
 
     private Object[][] setupWindow() {
-        Object[][] tableData = new Object[registers.length][3];
+        Object[][] tableData = new Object[registers.length][dualValueColumns ? 5 : 3];
         for (int i = 0; i < registers.length; i++) {
             tableData[i][0] = registers[i].getName();
             int temp = registers[i].getNumber();
             tableData[i][1] = temp == -1 ? "" : temp;
-            tableData[i][2] = formatRegister(registers[i],
-                    NumberDisplayBaseChooser.getBase(settings.getBooleanSetting(Settings.Bool.DISPLAY_VALUES_IN_HEX)));
+            if (dualValueColumns) {
+                tableData[i][VALUE_SIGNED_COLUMN] = formatRegister(registers[i], NumberDisplayBaseChooser.DECIMAL);
+                tableData[i][VALUE_UNSIGNED_COLUMN] = formatUnsignedRegister(registers[i]);
+                tableData[i][VALUE_HEX_COLUMN] = formatRegister(registers[i], NumberDisplayBaseChooser.HEXADECIMAL);
+            } else {
+                tableData[i][VALUE_SIGNED_COLUMN] = formatRegister(registers[i],
+                        NumberDisplayBaseChooser.getBase(settings.getBooleanSetting(Settings.Bool.DISPLAY_VALUES_IN_HEX)));
+            }
         }
         return tableData;
     }
@@ -146,13 +197,30 @@ public abstract class RegisterBlockWindow extends JPanel implements Observer {
             table.tableChanged(new TableModelEvent(table.getModel()));
         }
     }
+
+    /**
+     * Access to the underlying table model (useful for tests).
+     */
+    public javax.swing.table.TableModel getTableModel() {
+        return table.getModel();
+    }
     /**
      * Update register display using specified display base
      */
     public void updateRegisters() {
         for (int i = 0; i < registers.length; i++) {
-            ((RegTableModel) table.getModel()).setDisplayAndModelValueAt(formatRegister(registers[i],
-                    Globals.getGui().getMainPane().getExecutePane().getValueDisplayBase()), i, 2);
+            RegTableModel model = (RegTableModel) table.getModel();
+            if (dualValueColumns) {
+                model.setDisplayAndModelValueAt(formatRegister(registers[i], NumberDisplayBaseChooser.DECIMAL),
+                        i, VALUE_SIGNED_COLUMN);
+                model.setDisplayAndModelValueAt(formatUnsignedRegister(registers[i]),
+                        i, VALUE_UNSIGNED_COLUMN);
+                model.setDisplayAndModelValueAt(formatRegister(registers[i], NumberDisplayBaseChooser.HEXADECIMAL),
+                        i, VALUE_HEX_COLUMN);
+            } else {
+                model.setDisplayAndModelValueAt(formatRegister(registers[i],
+                        Globals.getGui().getMainPane().getExecutePane().getValueDisplayBase()), i, VALUE_SIGNED_COLUMN);
+            }
         }
     }
 
@@ -268,11 +336,14 @@ public abstract class RegisterBlockWindow extends JPanel implements Observer {
     }
 
     private class RegTableModel extends AbstractTableModel {
-        final String[] columnNames = {"Name", "Number", "Value"};
+        final String[] columnNames;
         private Object[][] data;
 
         private RegTableModel(Object[][] d) {
             data = d;
+            columnNames = dualValueColumns
+                    ? new String[]{"Name", "Number", "Value (Signed)", "Value (Unsigned)", "Value (HEX)"}
+                    : new String[]{"Name", "Number", "Value"};
         }
 
         public int getColumnCount() {
@@ -306,19 +377,21 @@ public abstract class RegisterBlockWindow extends JPanel implements Observer {
         public boolean isCellEditable(int row, int col) {
             //Note that the data/cell address is constant,
             //no matter where the cell appears onscreen.
-            return col == VALUE_COLUMN;
+            return col == VALUE_SIGNED_COLUMN || (dualValueColumns && (col == VALUE_UNSIGNED_COLUMN || col == VALUE_HEX_COLUMN));
         }
 
 
         /*
          * Update cell contents in table model.  This method should be called
       	 * only when user edits cell, so input validation has to be done.  If
-       	 * value is valid, the register is updated.
+        * value is valid, the register is updated and all representations
+        * (signed decimal, unsigned decimal, hexadecimal) are refreshed from it,
+        * so the value columns always show the same register value.
          */
         public void setValueAt(Object value, int row, int col) {
             int val = 0;
             try {
-                val = Binary.stringToInt((String) value);
+                val = parseUserValue((String) value, col);
             } catch (NumberFormatException nfe) {
                 data[row][col] = "INVALID";
                 fireTableCellUpdated(row, col);
@@ -332,9 +405,34 @@ public abstract class RegisterBlockWindow extends JPanel implements Observer {
             } finally {
                 Globals.memoryAndRegistersLock.unlock();
             }
-            int valueBase = Globals.getGui().getMainPane().getExecutePane().getValueDisplayBase();
-            data[row][col] = NumberDisplayBaseChooser.formatNumber(val, valueBase);
-            fireTableCellUpdated(row, col);
+            if (dualValueColumns) {
+                data[row][VALUE_SIGNED_COLUMN] = formatRegister(registers[row], NumberDisplayBaseChooser.DECIMAL);
+                data[row][VALUE_UNSIGNED_COLUMN] = formatUnsignedRegister(registers[row]);
+                data[row][VALUE_HEX_COLUMN] = formatRegister(registers[row], NumberDisplayBaseChooser.HEXADECIMAL);
+                fireTableCellUpdated(row, VALUE_SIGNED_COLUMN);
+                fireTableCellUpdated(row, VALUE_UNSIGNED_COLUMN);
+                fireTableCellUpdated(row, VALUE_HEX_COLUMN);
+            } else {
+                int valueBase = Globals.getGui().getMainPane().getExecutePane().getValueDisplayBase();
+                data[row][col] = NumberDisplayBaseChooser.formatNumber(val, valueBase);
+                fireTableCellUpdated(row, col);
+            }
+        }
+
+        /**
+         * Parses user input for a value cell. The unsigned column additionally
+         * accepts decimal values above the signed range (e.g. 4294967295).
+         */
+        private int parseUserValue(String text, int col) throws NumberFormatException {
+            if (col == VALUE_UNSIGNED_COLUMN) {
+                try {
+                    return Binary.stringToInt(text);
+                } catch (NumberFormatException nfe) {
+                    long parsed = Long.parseUnsignedLong(text.trim(), 10);
+                    return (int) parsed; // wrap to register width
+                }
+            }
+            return Binary.stringToInt(text);
         }
 
 

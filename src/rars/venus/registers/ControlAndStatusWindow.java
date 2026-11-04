@@ -32,7 +32,7 @@ public class ControlAndStatusWindow extends RegisterBlockWindow {
     };
 
     public ControlAndStatusWindow() {
-        super(ControlAndStatusRegisterFile.getRegisters(), regToolTips, "Current 32 bit value");
+        super(ControlAndStatusRegisterFile.getRegisters(), regToolTips, "Current 32 bit value", true);
     }
 
     protected String formatRegister(Register value, int base) {
