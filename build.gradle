@@ -1,0 +1,66 @@
+plugins {
+    id 'java'
+}
+
+version = '1.0'
+group = 'rars'
+
+ext.javaTarget = 21
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+        resources {
+            srcDirs = ['src']
+            excludes = ['**/*.java', 'jsoftfloat/**']
+        }
+    }
+    test {
+        java {
+            srcDirs = ['test']
+        }
+    }
+}
+
+tasks.processResources {
+    exclude 'META-INF/MANIFEST.MF'
+}
+
+tasks.processTestResources {
+    enabled = false
+}
+
+tasks.test {
+    failOnNoDiscoveredTests = false
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = javaTarget
+}
+
+def buildDate = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern('yyyyMMdd'))
+
+jar {
+    archiveFileName = "rars-cu-${buildDate}.jar"
+    manifest {
+        attributes(
+            'Main-Class': 'rars.Launch',
+            'Class-Path': '.',
+        )
+    }
+    from('.') {
+        include 'README.md'
+        include 'License.txt'
+    }
+}
+
+tasks.register('runTests', JavaExec) {
+    group = 'verification'
+    dependsOn compileTestJava
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'Test'
+    workingDir = layout.projectDirectory
+}

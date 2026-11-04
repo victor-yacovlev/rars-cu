@@ -4,7 +4,9 @@ out
 
 # Build products
 build
+.gradle
 rars.jar
+rars-cu-*.jar
 
 # Eclipse project files
 .classpath
