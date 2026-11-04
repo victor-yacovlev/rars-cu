@@ -20,5 +20,3 @@ java -jar rars-cu-YYYYMMDD.jar   # запуск GUI (java -jar ... h - спра�
 ```
 
 Имя jar-файла содержит дату сборки в формате `rars-cu-YYYYMMDD.jar`; скрипт выводит имя созданного файла. Целевая версия Java - 21 (сборка идёт любым JDK 21+ с `--release 21`). Прогон тестов: `gradle runTests`.
-
-Старый способ сборки без Gradle: `./build-jar.sh`, тесты: `./test.sh`.
