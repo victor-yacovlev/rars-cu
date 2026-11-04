@@ -83,6 +83,7 @@ public class RunResetAction extends GuiAction {
         FloatingPointRegisterFile.resetRegisters();
         ControlAndStatusRegisterFile.resetRegisters();
         InterruptController.reset();
+        rars.simulator.FunctionRun.clear();
 
         executePane.getRegistersWindow().clearHighlighting();
         executePane.getRegistersWindow().updateRegisters();

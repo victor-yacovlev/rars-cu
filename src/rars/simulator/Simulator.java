@@ -447,6 +447,12 @@ public class Simulator extends Observable {
                     }
 
                     pc = RegisterFile.getProgramCounter();
+                    if (FunctionRun.active && pc == FunctionRun.returnAddress) {
+                        // Function-run mode: the invoked function returned to the sentinel
+                        // address planted in ra. Treat as normal termination.
+                        stopExecution(true, Reason.NORMAL_TERMINATION);
+                        return;
+                    }
                     RegisterFile.incrementPC();
                     // Get instuction
                     try {

@@ -70,6 +70,9 @@ public class RunStepAction extends GuiAction {
         if (FileStatus.isAssembled()) {
             if (!mainUI.getStarted()) {  // DPS 17-July-2008
                 processProgramArgumentsIfAny();
+                if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {
+                    return; // user cancelled the function-arguments dialog
+                }
             }
             mainUI.setStarted(true);
             mainUI.getMessagesPane().selectRunMessageTab();
@@ -111,6 +114,9 @@ public class RunStepAction extends GuiAction {
             FileStatus.set(FileStatus.TERMINATED);
         }
         if (done && pe == null) {
+            if (reason == Simulator.Reason.NORMAL_TERMINATION) {
+                FunctionRunSupport.reportFunctionResult(mainUI);
+            }
             mainUI.getMessagesPane().postMessage(
                     "\n" + name + ": execution " +
                             ((reason == Simulator.Reason.CLIFF_TERMINATION) ? "terminated due to null instruction."

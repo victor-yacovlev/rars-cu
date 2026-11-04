@@ -73,6 +73,9 @@ public class RunGoAction extends GuiAction {
         if (FileStatus.isAssembled()) {
             if (!mainUI.getStarted()) {
                 processProgramArgumentsIfAny();  // DPS 17-July-2008
+                if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {
+                    return; // user cancelled the function-arguments dialog
+                }
             }
             if (mainUI.getReset() || mainUI.getStarted()) {
 
@@ -170,6 +173,7 @@ public class RunGoAction extends GuiAction {
         }
         switch (reason) {
             case NORMAL_TERMINATION:
+                FunctionRunSupport.reportFunctionResult(mainUI);
                 mainUI.getMessagesPane().postMessage(
                         "\n" + name + ": execution completed successfully.\n\n");
                 mainUI.getMessagesPane().postRunMessage(
