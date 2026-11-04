@@ -1,36 +1,43 @@
 # Точки расширения (для задач форка)
 
-Задачи из `FORK-CHANGES.md` (на момент написания не реализованы) и общие сценарии расширения. Пути — относительно `src/`.
+Все три задачи из `FORK-CHANGES.md` **реализованы** (разделы 1–3 описывают фактическое устройство). Раздел 4 — общие сценарии расширения. Пути — относительно `src/`.
 
-## 1. Комментарий `//` (как в gcc) в дополнение к `#`
+## 1. Комментарий `//` (как в gcc) в дополнение к `#` — реализовано
 
-Изменить нужно **два независимых лексера**, иначе подсветка и ассемблер разойдутся:
+Распознают оба лексера:
 
-1. **Ассемблер**: `rars/assembler/Tokenizer.java`, метод `tokenizeLine(...)`, `switch (c) { case '#': ... }` (~L300). Добавить распознавание `/` + следующий `/` до конца строки как `TokenTypes.COMMENT` (кейс `case '/'` сейчас не обрабатывается — смотреть `line[linePos+1]`).
-2. **GUI-подсветка**: `rars/venus/editors/jeditsyntax/tokenmarker/RISCVTokenMarker.java`, `markTokensImpl()` (сейчас COMMENT1 — только `#`) + при необходимости примеры в `getRISCVTokenExamples()`.
+1. **Ассемблер**: `rars/assembler/Tokenizer.java`, `tokenizeLine(...)`, общий кейс `case '#': case '/':` — при `/` проверяется следующий символ: `//` захватывает остаток строки как один токен, одиночный `/` — обычный символ. Классификация — `rars/assembler/TokenTypes.matchTokenType()`: строка, начинающаяся с `#` или `//`, получает тип `TokenTypes.COMMENT`.
+2. **GUI-подсветка**: `rars/venus/editors/jeditsyntax/tokenmarker/RISCVTokenMarker.java`, `markTokensImpl()` — кейс `case '/'` с заглядыванием вперёд окрашивает `//`-комментарий как `Token.COMMENT1` (аналогично `#`).
 
-Сопутствующий код правки **не требует**: `Tokenizer.processEqv` и `Assembler.stripComment()` (L517) оперируют уже типизированным токеном `TokenTypes.COMMENT`.
+`Tokenizer.processEqv` и `Assembler.stripComment()` правок не требовали — оперируют уже типизированным токеном. Комментарий `//` учитывается и в поиске Си-сигнатуры функции (`FunctionRunSupport.findSignature`, см. раздел 3).
 
-## 2. Отображение регистров одновременно в hex и dec
+## 2. Отображение регистров в signed/unsigned/hex — реализовано
 
-Основные точки (все в `rars/venus/registers/`):
+Таблицы «Registers» и «Control and Status» показывают три value-колонки: **Value (Signed)**, **Value (Unsigned)**, **Value (HEX)**. Окно «Floating Point» не затронуто — у него одна колонка `Value`.
 
-- `RegisterBlockWindow.java`: `RegTableModel.columnNames` (сейчас 3 колонки: Name/Number/Value), `isCellEditable`, `setValueAt`, `setupWindow` (L117), `updateRegisters` (L152–157), ширины колонок в конструкторе. **Добавление второй value-колонки** — вариант с наибольшим объёмом правок, но чистый.
-- `formatRegister()` в наследниках: `RegistersWindow` (L65–71), `FloatingPointWindow`, `ControlAndStatusWindow`.
-- Альтернатива без новой колонки — менять форматтер `NumberDisplayBaseChooser.formatNumber` (вернуть «0x… / 123»), но он переиспользуется `TextSegmentWindow` и `DataSegmentWindow`, и сломается редактирование значений (`setValueAt` парсит через `Binary.stringToInt`).
-- Переключатель режима: `Settings.Bool.DISPLAY_VALUES_IN_HEX`, чекбокс `VenusUI.settingsValueDisplayBase`, `ExecutePane.valueDisplayBase`.
-- CLI-вывод (пост-мортем) — отдельный код: `rars/Launch.java`, `displayRegistersPostMortem()` / `formatIntForDisplay()`.
+Ключевое в `rars/venus/registers/RegisterBlockWindow.java`:
 
-## 3. Запрос аргументов первой функции, если нет `main`/`start`
+- Флаг `dualValueColumns` (4-аргументный конструктор; `true` в `RegistersWindow` и `ControlAndStatusWindow`, 3-аргументный делегирует с `false` для FP-окна).
+- `formatUnsignedRegister()` — беззнаковое десятичное: `Long.toUnsignedString` (RV64) или `NumberDisplayBaseChooser.formatUnsignedInteger` (RV32).
+- `RegTableModel.setValueAt()` — любая правка value-колонки пишет значение в регистр (под `Globals.memoryAndRegistersLock`) и **перечитывает из регистра все три представления** (колонки всегда синхронны). В беззнаковой колонке дополнительно принимаются значения за пределами знакового диапазона (`parseUserValue` → `Long.parseUnsignedLong`). Невалидный ввод помечается `INVALID`.
+- `updateRegisters()` (обновления от эмулятора) обновляет все три колонки.
+- Публичный `getTableModel()` — для тестов.
 
-Связанные места (проверены):
+Пункт меню «Settings → Values displayed in hexadecimal» **удалён** из `VenusUI` (поле/action/геттер `getValueDisplayBaseMenuItem`). Сама настройка `Settings.Bool.DISPLAY_VALUES_IN_HEX` оставлена — её использует чекбокс «Hexadecimal Values» на `ExecutePane` (теперь влияет только на Data Segment) и пост-мортем в CLI.
 
-- Метка старта: `rars/assembler/SymbolTable.java` — `private static String startLabel = "main"`, `getStartLabel()` (L274).
-- Настройка: `rars/Settings.java` — `enum Bool.START_AT_MAIN` (L127).
-- Установка PC: `rars/riscv/hardware/RegisterFile.java` — `initializeProgramCounter(boolean startAtMain)` (L180): если метка найдена (`Globals.symbolTable.getAddress(getStartLabel()) != SymbolTable.NOT_FOUND`) и адрес в тексте — PC = адрес метки, иначе `textBaseAddress`; `resetRegisters()` (L244) — та же логика.
-- Подача аргументов: `rars/simulator/ProgramArgumentList.java` — `storeProgramArguments()` (L128): argc→`a0`, argv→`a1` (строки и указатели кладутся на стек). Вызывается из `rars/api/Program.setup()` (L140) и из GUI: `rars/venus/run/RunGoAction.processProgramArgumentsIfAny()` / `RunStepAction` (гейт `Settings.Bool.PROGRAM_ARGUMENTS`); CLI — опция `pa` в `Launch.parseCommandArgs()`.
+## 3. Запуск первой функции с аргументами, если нет `main`/`_start` — реализовано
 
-Сценарий реализации: после сборки проверить `Globals.symbolTable.getAddress("main")` (и `start`), при отсутствии — интерактивно запросить аргументы (GUI — диалог из `venus`; CLI — `Launch`; программно — `api.Program`), затем передать их в `ProgramArgumentList.storeProgramArguments()`.
+Новые классы:
+
+- **`rars/simulator/FunctionRun.java`** — статическое состояние режима: `active`, `functionName`, `arguments`, `hasReturnValue`, `returnAddress` (sentinel = `Memory.textBaseAddress - 4`). Сбрасывается `clear()` из `RunAssembleAction` и `RunResetAction`.
+- **`rars/venus/run/FunctionRunSupport.java`** — вся логика GUI:
+  - `prepareFunctionRunIfNeeded(VenusUI)`: если в `Globals.symbolTable` нет текстовых символов `main` и `_start`, точка входа — первый текстовый символ глобальной таблицы (порядок возникновения в коде). Показывает модальный диалог с аргументами; отмена возвращает `false` и запуск прекращается. Вызывается из `RunGoAction`/`RunStepAction` при `!mainUI.getStarted()`.
+  - Диалог в двух видах: при найденной Си-сигнатуре — фиксированный набор именованных параметров (все обязательны); иначе — произвольный список целых чисел через пробел (может быть пустым). Валидация — `Long.decode`, при ошибке повторный ввод.
+  - `findSignature(label)` читает исходники из `RunAssembleAction.getProgramsToAssemble()` и ищет комментарий (`#` или `//`) с сигнатурой `ret_type name(params)` на ближайшей непустой строке перед меткой; имя в сигнатуре должно совпадать с меткой.
+  - `applyFunctionCall`: PC → адрес функции, `ra` → sentinel, аргументы → `a0`–`a7` (по соглашению о вызовах RISC-V), сверх 8 — на стек через `sp` (`Memory.setDoubleWord`).
+  - `reportFunctionResult(VenusUI)`: после `NORMAL_TERMINATION` пишет в **Run I/O** (`postRunMessage`) строку `Execution Done: name(args) = RET` (для `void` — без `= RET`); вызывается из `RunGoAction.stopped()` и `RunStepAction.stepped()`.
+
+**Механизм корректного `ret`**: в `Simulator.SimThread.run()` перед выборкой инструкции проверяется `FunctionRun.active && pc == FunctionRun.returnAddress` → `stopExecution(true, Reason.NORMAL_TERMINATION)` вместо ошибки `Instruction load access error`.
 
 ## 4. Общие сценарии расширения
 

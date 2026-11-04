@@ -45,7 +45,7 @@ VenusUI (JFrame)
   - `generic/GenericTextArea.java` — `JTextArea` без подсветки;
   - `jeditsyntax/JEditBasedTextArea.java` — на базе `JEditTextArea`: `setTokenMarker(new RISCVTokenMarker())`, шрифт из `Settings.getEditorFont()`, undo через `UndoManager`.
 - Порт jEdit Syntax: `jeditsyntax/` — `JEditTextArea`, `TextAreaPainter`, `SyntaxDocument`, `TokenMarker`, `SyntaxStyle`, `SyntaxUtilities`, `KeywordMap`, `InputHandler`/`DefaultInputHandler`, `TextAreaDefaults`, `TextUtilities`.
-- **Токенайзер подсветки**: `jeditsyntax/tokenmarker/RISCVTokenMarker.java`, метод `markTokensImpl()` (посимвольный разбор). Типы токенов в `Token.java`: `COMMENT1, LITERAL1/2, LABEL, KEYWORD1` (инструкции), `KEYWORD2` (директивы), `KEYWORD3` (регистры), `INVALID, MACRO_ARG`. **Комментарий сейчас только `#`** — точка для задачи «`//`».
+- **Токенайзер подсветки**: `jeditsyntax/tokenmarker/RISCVTokenMarker.java`, метод `markTokensImpl()` (посимвольный разбор). Типы токенов в `Token.java`: `COMMENT1, LITERAL1/2, LABEL, KEYWORD1` (инструкции), `KEYWORD2` (директивы), `KEYWORD3` (регистры), `INVALID, MACRO_ARG`. Комментарий — `#` и `//` (кейс `case '/'` с заглядыванием вперёд).
 - Ключевые слова — из `rars.assembler.Directives`, `RegisterFile`, `FloatingPointRegisterFile`, `InstructionSet` (лениво через `getKeywords()`).
 - Стили подсветки: `Settings.setEditorSyntaxStyleByPosition()` → `JEditBasedTextArea.updateSyntaxStyles()` → `SyntaxUtilities.getCurrentSyntaxStyles()`; диалог — `venus/settings/SettingsHighlightingAction.java`.
 
@@ -55,19 +55,24 @@ VenusUI (JFrame)
 
 Ключевое в `RegisterBlockWindow.java`:
 
-- JTable с моделью `RegTableModel`, **3 колонки**: `NAME_COLUMN=0`, `NUMBER_COLUMN=1`, `VALUE_COLUMN=2`.
-- Значение Value форматируется: `setupWindow()` (L117) и `updateRegisters()` (L152–157) — `formatRegister(reg, NumberDisplayBaseChooser.getBase(...))` / `formatRegister(reg, getValueDisplayBase())` (база из `ExecutePane.valueDisplayBase`).
-- `RegistersWindow.formatRegister()` (L65–71): при RV64 — `formatNumber(value.getValue(), base)`, иначе `formatNumber((int)value.getValue(), base)`.
-- Редактирование значения: `RegTableModel.setValueAt()` (L318–338) — парсинг `Binary.stringToInt`, запись в регистр под `Globals.memoryAndRegistersLock`.
+- JTable с моделью `RegTableModel`. Режим задётся флагом `dualValueColumns` (4-аргументный конструктор):
+  - `true` (`RegistersWindow`, `ControlAndStatusWindow`) — **5 колонок**: `Name`, `Number`, `Value (Signed)`, `Value (Unsigned)`, `Value (HEX)`;
+  - `false` (`FloatingPointWindow`, 3-аргументный конструктор) — 3 колонки `Name/Number/Value`, база — `ExecutePane.getValueDisplayBase()`.
+- Форматирование: `formatRegister(reg, base)` (знаковое dec / hex, маскирование до `int` при RV32), `formatUnsignedRegister(reg)` (беззнаковое dec: `Long.toUnsignedString` / `formatUnsignedInteger`).
+- Редактирование value-колонок: `RegTableModel.setValueAt()` — парсинг (`Binary.stringToInt`; для беззнаковой колонки дополнительная ветка `Long.parseUnsignedLong` для значений за пределами знакового диапазона), запись в регистр под `Globals.memoryAndRegistersLock`, затем **перечитка всех представлений из регистра** (колонки всегда синхронны); невалидный ввод → `INVALID`.
+- `updateRegisters()` — обновление от эмулятора, пишет во все value-колонки. Публичный `getTableModel()` — для тестов.
 - Подсветка изменённых: `update(Observable, Object)` — Observer за `Simulator` (start/stop включает/выключает наблюдение за регистрами), за `Settings`, за каждым `Register` (`RegisterAccessNotice.WRITE` → `highlightCellForRegister`).
 - Шрифты/цвета строк — `Settings` (`EVEN_ROW_*`, `ODD_ROW_*`, `REGISTER_HIGHLIGHT_*`).
 
+Пункт меню «Values displayed in hexadecimal» удалён из `VenusUI`; настройка `Settings.Bool.DISPLAY_VALUES_IN_HEX` осталась (чекбокс «Hexadecimal Values» на `ExecutePane` теперь управляет только Data Segment).
+
 ## 4. Экшены запуска (`rars/venus/run/`)
 
-- `RunAssembleAction.java` — сборка: `Globals.program = new RISCVprogram()`, список файлов по `ASSEMBLE_ALL`/`ASSEMBLE_OPEN`, ассемблирование, обновление `TextSegmentWindow`, `FileStatus`, `MessagesPane`.
-- `RunGoAction.java` — запуск: проверка `FileStatus.isAssembled()`; `processProgramArgumentsIfAny()` (`TextSegmentWindow.getProgramArguments()` → `new ProgramArgumentList(...).storeProgramArguments()`); анонимный `Observer` на `Simulator.getInstance()` — по `SimulatorNotice.SIMULATOR_STOP` через `EventQueue.invokeLater` вызывает `paused()` (PAUSE/BREAKPOINT) или `stopped()` (NORMAL/CLIFF/EXCEPTION/STOP/MAX_STEPS); затем `Globals.program.startSimulation(maxSteps, breakPoints)`.
+- `RunAssembleAction.java` — сборка: `Globals.program = new RISCVprogram()`, список файлов по `ASSEMBLE_ALL`/`ASSEMBLE_OPEN`, ассемблирование, сброс `FunctionRun.clear()`, обновление `TextSegmentWindow`, `FileStatus`, `MessagesPane`.
+- `RunGoAction.java` — запуск: проверка `FileStatus.isAssembled()`; `processProgramArgumentsIfAny()` (`TextSegmentWindow.getProgramArguments()` → `new ProgramArgumentList(...).storeProgramArguments()`); при первом запуске — `FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)` (режим «запуск функции»: если нет `main`/`_start` — диалог аргументов; отмена останавливает запуск); анонимный `Observer` на `Simulator.getInstance()` — по `SimulatorNotice.SIMULATOR_STOP` через `EventQueue.invokeLater` вызывает `paused()` (PAUSE/BREAKPOINT) или `stopped()` (NORMAL/CLIFF/EXCEPTION/STOP/MAX_STEPS; при NORMAL — `FunctionRunSupport.reportFunctionResult()` → строка `Execution Done: ...` в Run I/O); затем `Globals.program.startSimulation(maxSteps, breakPoints)`.
 - **SwingWorker не используется** (упоминания в старых комментариях устарели): симуляция — `new Thread(new SimThread(...), "RISCV")` в `Simulator.startSimulation()`. GUI-поток общается с ней через `SimulatorNotice` и `Globals.memoryAndRegistersLock`.
-- `RunStepAction` (maxSteps=1), `RunBackstepAction` (`BackStepper.backStep()`), `RunResetAction`, `RunClearBreakpointsAction`, `RunSpeedPanel` (слайдер скорости, `speedTable`, `UNLIMITED_SPEED=40`; при unlimited пошаговая подсветка регистров отключается — см. `RegisterBlockWindow.update()`).
+- `RunStepAction` (maxSteps=1; тот же вызов `FunctionRunSupport.prepareFunctionRunIfNeeded`, а при завершении — `reportFunctionResult`), `RunBackstepAction` (`BackStepper.backStep()`), `RunResetAction` (сбрасывает и `FunctionRun.clear()`), `RunClearBreakpointsAction`, `RunSpeedPanel` (слайдер скорости, `speedTable`, `UNLIMITED_SPEED=40`; при unlimited пошаговая подсветка регистров отключается — см. `RegisterBlockWindow.update()`).
+- `FunctionRunSupport.java` — режим «запуск программы как функции» (нет `main`/`_start`): поиск точки входа (первый текстовый символ глобальной таблицы), парсинг Си-сигнатуры из комментария перед меткой, модальные диалоги аргументов, запись аргументов в `a0`–`a7`/стек, PC и sentinel-`ra`. Подробности — [04-extension-points.md](04-extension-points.md), раздел 3.
 - В `paused()`/`stopped()` вручную обновляются все окна: `executePane.getRegistersWindow().updateRegisters()`, FP, CSR, `DataSegmentWindow.updateValues()`.
 
 ## 5. Настройки GUI (`rars/venus/settings/`)

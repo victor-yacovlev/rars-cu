@@ -20,7 +20,7 @@ graph TD
 ### Токенизация (`rars/assembler/`)
 
 - `Tokenizer.tokenize(RISCVprogram)` (L91): `processIncludes()` (рекурсивный `.include` с защитой от циклов) → `tokenizeLine()` по строкам → `processEqv()` (`.eqv`-подстановки).
-- **Комментарий** распознаётся в `tokenizeLine`, `switch(c) { case '#': ... }` (~L300) — от `#` до конца строки, токен типа `TokenTypes.COMMENT`. Это точка для задачи «`//`-комментарии» (см. 04-extension-points.md).
+- **Комментарий** распознаётся в `tokenizeLine`, общий кейс `switch(c) { case '#': case '/': ... }` — `#` или `//` до конца строки даёт токен `TokenTypes.COMMENT` (классификация — `TokenTypes.matchTokenType`); одиночный `/` — обычный символ. Подробности — в [04-extension-points.md](04-extension-points.md), раздел 1.
 - `Token.java`, `TokenList.java`, `TokenTypes.java` (enum: `COMMENT, DIRECTIVE, OPERATOR, DELIMITER, REGISTER_NAME, FP_REGISTER_NAME, CSR_NAME, IDENTIFIER, QUOTED_STRING, PLUS, MINUS, COLON, ERROR, MACRO_PARAMETER, ...`).
 - `Directives.java` (`.text`, `.data`, `.word`, `.eqv`, `.include`, `.macro`, ...), `DataTypes.java` — размеры типов.
 - `Symbol.java` / `SymbolTable.java` — таблица символов; **`static String startLabel = "main"`**, `getStartLabel()` (L274).
@@ -75,13 +75,14 @@ graph TD
   1. `Globals.memoryAndRegistersLock.lock()`.
   2. Обработка отложенных прерываний/трапов через `InterruptController` + CSR (`uip/uie/ustatus`), порядок: external → software → timer → trap.
   3. Проверка лимита шагов.
-  4. `pc = RegisterFile.getProgramCounter(); RegisterFile.incrementPC()`.
+  4. `pc = RegisterFile.getProgramCounter()`; при активном режиме запуска функции — проверка `pc == FunctionRun.returnAddress` (sentinel в `ra`) → `NORMAL_TERMINATION`; затем `RegisterFile.incrementPC()`.
   5. `statement = Globals.memory.getStatement(pc)`; `null` → `CLIFF_TERMINATION`; `AddressErrorException` → трап/`SimulationException`.
   6. `instruction.simulate(statement)` — фактическое исполнение (L484).
   7. Управляющие исключения: `BreakpointException` (EBREAK), `WaitException` (WFI — поток ждёт `wait()`), `ExitingException` (syscall exit → `NORMAL_TERMINATION`), `SimulationException`.
   8. Инкремент CSR `cycle/instret/time`, брейкпоинты, обновление GUI через `SwingUtilities.invokeLater`, троттлинг по `RunSpeedPanel`.
 - **`BackStepper`** — стек отката (`BackstepStack`, лимит `Globals.maximumBacksteps` из `Config.properties`): enum `Action` (`MEMORY_RESTORE_*, REGISTER_RESTORE, PC_RESTORE, CONTROL_AND_STATUS_REGISTER_RESTORE/BACKDOOR, FLOATING_POINT_REGISTER_RESTORE, DO_NOTHING`); `backStep()` выполняет undo. Записи добавляются из `Memory.set*`/методов регистров. Создаётся в `RISCVprogram.assemble()` после успешной сборки.
 - **`ProgramArgumentList.storeProgramArguments()`** (L128) — кладёт строки-аргументы и указатели на стек, `argc`→`a0`, `argv`→`a1`. Вызывается из `api.Program.setup()` и из GUI (`RunGoAction.processProgramArgumentsIfAny`, `RunStepAction`) при `Settings.Bool.PROGRAM_ARGUMENTS`.
+- **`FunctionRun`** — статическое состояние режима «запуск программы как функции» (нет `main`/`_start`): sentinel-адрес возврата в `ra`, имя функции, аргументы, признак возвращаемого значения. Настраивается из GUI (`venus.run.FunctionRunSupport`), сбрасывается при ассемблировании/сбросе. Подробности — в [04-extension-points.md](04-extension-points.md), раздел 3.
 
 ## 5. Программный API (`rars/api/`)
 

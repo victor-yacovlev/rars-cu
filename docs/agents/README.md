@@ -18,5 +18,5 @@
 - **Точка входа**: `rars.Launch#main` (`src/rars/Launch.java`). Без аргументов — GUI (`rars.venus.VenusUI`), с аргументами — headless-режим через `rars.api.Program`.
 - **Конвейер**: исходник → `Tokenizer` → двухпроходный `Assembler` → `ProgramStatement` (машинный код) → `Memory` → `Simulator` (поток `SimThread`, по инструкции на класс в `rars.riscv.instructions`).
 - **Глобальное состояние**: `rars.Globals` (синглтоны `instructionSet`, `memory`, `symbolTable`, `settings`, `memoryAndRegistersLock`). Обязательная инициализация — `Globals.initialize()`.
-- **Задачи форка**: см. `FORK-CHANGES.md` и [04-extension-points.md](04-extension-points.md).
-- **Сборка**: `./build-jar.sh` → `rars.jar` (требуется `git submodule update --init` для JSoftFloat). Тесты: `./test.sh` (нужен собранный `rars.jar`).
+- **Задачи форка**: все три задачи `FORK-CHANGES.md` реализованы — см. [04-extension-points.md](04-extension-points.md) (разделы 1–3: устройство каждой).
+- **Сборка**: `./gradle-build.sh` → `build/libs/rars-cu-<дата>.jar` (требуется `git submodule update --init` для JSoftFloat). Тесты: `javac -cp <jar> test/Test.java && java -cp test:<jar> Test`.

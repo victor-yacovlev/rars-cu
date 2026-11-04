@@ -2,7 +2,7 @@
 
 ## Назначение
 
-RARS (RISC-V Assembler and Runtime Simulator) — учебный эмулятор ассемблера RISC-V, GUI на Java Swing. Данный репозиторий (`rars-cu`) — форк [thethirdone/rars](https://github.com/thethirdone/rars) (в свою очередь, форк MARS) для курса АКОС в ЦУ. Изменения форка относительно оригинала описаны в `FORK-CHANGES.md` (на момент анализа ни одна из трёх задач не реализована).
+RARS (RISC-V Assembler and Runtime Simulator) — учебный эмулятор ассемблера RISC-V, GUI на Java Swing. Данный репозиторий (`rars-cu`) — форк [thethirdone/rars](https://github.com/thethirdone/rars) (в свою очередь, форк MARS) для курса АКОС в ЦУ. Все три задачи форка из `FORK-CHANGES.md` реализованы: запуск первой функции с аргументами при отсутствии `main`/`_start`, комментарии `//` и отображение регистров в signed/unsigned/hex (устройство — в [04-extension-points.md](04-extension-points.md)).
 
 ## Структура каталогов
 
@@ -29,9 +29,10 @@ rars-cu/
 │   └── images/             # иконки
 ├── test/                   # Test.java (headless-тесты через rars.api) + *.s + riscv-tests/
 ├── docs/agents/            # эта документация
-├── build-jar.sh            # сборка rars.jar
+├── build.gradle, settings.gradle, gradle-build.sh  # основная сборка (gradle)
+├── build-jar.sh            # альтернативная сборка (чистый javac)
 ├── test.sh                 # запуск тестов
-└── FORK-CHANGES.md         # задачи форка
+└── FORK-CHANGES.md         # задачи форка (все реализованы)
 ```
 
 Всего ~337 Java-файлов. Классов `BackgroundParser`, `SourceTokenList`, `Simulation`, `DPFSimulator` в проекте **нет** (проверено) — токенизация целиком в `rars.assembler.Tokenizer`, симуляция — в `rars.simulator.Simulator`.
@@ -40,13 +41,15 @@ rars-cu/
 
 ```bash
 git submodule update --init   # JSoftFloat (обязательно)
-./build-jar.sh                # компилирует src/**.java в build/, упаковывает rars.jar
-java -jar rars.jar            # GUI
-java -jar rars.jar h          # CLI-справка (список опций — в javadoc Launch, строки 63–110)
-./test.sh                     # javac -cp rars.jar test/Test.java && java Test
+./gradle-build.sh              # gradle build → build/libs/rars-cu-<дата>.jar (+ копия в корень)
+gradle build --no-daemon       # альтернатива: только сборка
+java -jar rars-cu-<дата>.jar   # GUI
+java -jar rars-cu-<дата>.jar h # CLI-справка (список опций — в javadoc Launch)
+javac -cp build/libs/<jar> test/Test.java && java -cp test:build/libs/<jar> Test   # тесты
 ```
 
-- Сборка — чистый `javac` без систем сборки (maven/gradle отсутствуют). Java-версия: код рассчитан на Java 8+ (использует `java.util.Observable`, Swing).
+- Сборка — gradle (`build.gradle`, `settings.gradle`); также есть `build-jar.sh` (чистый `javac` → `rars.jar`). Java-версия: код рассчитан на Java 8+ (использует `java.util.Observable`, Swing).
+- Известный сбой тестов: `test/selfmod.s` падает и на оригинальной сборке (не регрессия форка).
 - `test/Test.java` — прогон ассемблерных программ из `test/*.s` через `rars.api.Program` в headless-режиме.
 - `rars/extras/Documentation.java` — отдельный `main()` для генерации markdown-таблиц (директивы, syscall'ы, инструкции); не часть GUI.
 
