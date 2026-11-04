@@ -299,6 +299,14 @@ public class Tokenizer {
             } else { // not inside a quoted string, so be sensitive to delimiters
                 switch (c) {
                     case '#':  // # denotes comment that takes remainder of line
+                    case '/':  // // denotes comment that takes remainder of line (gcc-style)
+                        if (c == '/' && !(linePos + 1 < line.length && line[linePos + 1] == '/')) {
+                            // single '/' is not a comment; treat it as an ordinary character
+                            if (tokenPos == 0)
+                                tokenStartPos = linePos + 1;
+                            token[tokenPos++] = c;
+                            break;
+                        }
                         if (tokenPos > 0) {
                             this.processCandidateToken(token, program, lineNum, theLine, tokenPos, tokenStartPos, result);
                         }

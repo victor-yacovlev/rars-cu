@@ -141,6 +141,17 @@ public class RISCVTokenMarker extends TokenMarker {
                                 break loop;
                             }
                             break;
+                        case '/':
+                            backslash = false;
+                            if (i + 1 < length && array[i + 1] == '/') {
+                                // gcc-style // comment takes the remainder of the line
+                                doKeyword(line, i, c);
+                                addToken(i - lastOffset, token);
+                                addToken(length - i, Token.COMMENT1);
+                                lastOffset = lastKeyword = length;
+                                break loop;
+                            }
+                            break;
                         default:
                             backslash = false;
                             // . and $ added 4/6/10 DPS; % added 12/12 M.Sekhavat

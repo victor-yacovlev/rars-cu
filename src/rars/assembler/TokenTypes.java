@@ -85,7 +85,8 @@ public enum TokenTypes {
             return TokenTypes.ERROR;
 
         // See if it is a comment
-        if (value.charAt(0) == '#')
+        if (value.charAt(0) == '#'
+                || (value.length() > 1 && value.charAt(0) == '/' && value.charAt(1) == '/'))
             return TokenTypes.COMMENT;
 
         if (value.charAt(0) == '@')
