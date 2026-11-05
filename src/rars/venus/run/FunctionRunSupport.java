@@ -9,10 +9,15 @@ import rars.riscv.hardware.Memory;
 import rars.riscv.hardware.Register;
 import rars.riscv.hardware.RegisterFile;
 import rars.simulator.FunctionRun;
+import rars.venus.FileStatus;
+import rars.venus.FunctionArgumentsPersistence;
 import rars.venus.VenusUI;
 
 import javax.swing.*;
+import javax.swing.event.AncestorEvent;
+import javax.swing.event.AncestorListener;
 import java.awt.*;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -32,8 +37,13 @@ import java.util.regex.Pattern;
  *
  * If the source line above the function label is a comment ('#' or '//')
  * containing a C function signature, the dialog instead asks for a fixed
- * set of named parameters and, if the signature has a non-void return type,
- * the result is reported to the Messages pane after execution.
+ * set of named parameters. After normal termination the result is reported
+ * to the Run I/O pane; the return type defaults to integer when no signature
+ * is present (a signature may declare void to suppress the report).
+ *
+ * The argument dialog is prefilled with the values from the previous run of
+ * the same open file (persisted via FunctionArgumentsPersistence, keyed by
+ * the file pathname); keyboard focus starts in the first argument field.
  */
 public final class FunctionRunSupport {
 
@@ -84,7 +94,7 @@ public final class FunctionRunSupport {
 
         String functionName = entry.getName();
         FunctionSignature signature = findSignature(functionName);
-        long[] args = promptForArguments(mainUI, functionName, signature);
+        long[] args = promptForArguments(mainUI, functionName, signature, currentSourceFileKey());
         if (args == null) {
             return false; // user cancelled
         }
@@ -93,6 +103,16 @@ public final class FunctionRunSupport {
                 "Running function '" + functionName + "' with arguments ("
                         + joinArguments(args) + ")\n\n");
         return true;
+    }
+
+    /**
+     * The pathname of the open source file serves as the key under which the
+     * argument history is stored (unique per file). Null when no file is
+     * open; then no history is loaded or saved.
+     */
+    private static String currentSourceFileKey() {
+        File file = FileStatus.getFile();
+        return (file != null) ? file.getPath() : null;
     }
 
     /**
@@ -157,8 +177,10 @@ public final class FunctionRunSupport {
             }
         }
 
+        // Without a signature the return type defaults to integer,
+        // so the result is reported unless a signature declares void.
         FunctionRun.activate(entry.getName(),
-                signature != null && signature.hasReturnValue(),
+                signature == null || signature.hasReturnValue(),
                 args, sentinel);
     }
 
@@ -166,15 +188,16 @@ public final class FunctionRunSupport {
     // User input
     // -----------------------------------------------------------------------
 
-    private static long[] promptForArguments(Window parent, String functionName, FunctionSignature signature) {
+    private static long[] promptForArguments(Window parent, String functionName, FunctionSignature signature, String fileKey) {
         if (signature != null) {
-            return promptNamedArguments(parent, functionName, signature);
+            return promptNamedArguments(parent, functionName, signature, fileKey);
         }
-        return promptFreeFormArguments(parent, functionName);
+        return promptFreeFormArguments(parent, functionName, fileKey);
     }
 
-    private static long[] promptNamedArguments(Window parent, String functionName, FunctionSignature signature) {
+    private static long[] promptNamedArguments(Window parent, String functionName, FunctionSignature signature, String fileKey) {
         List<JTextField> fields = new ArrayList<>();
+        long[] previousValues = FunctionArgumentsPersistence.getLastNamedArguments(fileKey);
         while (true) {
             JPanel panel = new JPanel(new GridBagLayout());
             GridBagConstraints c = new GridBagConstraints();
@@ -188,6 +211,12 @@ public final class FunctionRunSupport {
                 if (fields.isEmpty()) {
                     for (int i = 0; i < signature.paramNames.size(); i++) {
                         JTextField field = new JTextField(10);
+                        if (previousValues != null && i < previousValues.length) {
+                            field.setText(Long.toString(previousValues[i]));
+                        }
+                        if (i == 0) {
+                            field.addAncestorListener(new RequestFocusOnShow());
+                        }
                         fields.add(field);
                         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
                         row.add(new JLabel(signature.paramNames.get(i) + " ="));
@@ -234,13 +263,14 @@ public final class FunctionRunSupport {
                 }
             }
             if (valid) {
+                FunctionArgumentsPersistence.saveNamedArguments(fileKey, values);
                 return values;
             }
         }
     }
 
-    private static long[] promptFreeFormArguments(Window parent, String functionName) {
-        String current = "";
+    private static long[] promptFreeFormArguments(Window parent, String functionName, String fileKey) {
+        String current = FunctionArgumentsPersistence.getLastFreeFormLine(fileKey);
         while (true) {
             Object input = JOptionPane.showInputDialog(parent,
                     "<html>The program has no 'main' or '_start' label.<br>"
@@ -254,6 +284,7 @@ public final class FunctionRunSupport {
             current = input.toString();
             String trimmed = current.trim();
             if (trimmed.isEmpty()) {
+                FunctionArgumentsPersistence.saveFreeFormLine(fileKey, "");
                 return new long[0];
             }
             String[] tokens = trimmed.split("\\s+");
@@ -274,6 +305,7 @@ public final class FunctionRunSupport {
                 }
             }
             if (valid) {
+                FunctionArgumentsPersistence.saveFreeFormLine(fileKey, trimmed);
                 return values;
             }
         }
@@ -282,6 +314,29 @@ public final class FunctionRunSupport {
     private static void showInvalidArgumentsError(Window parent, String message) {
         JOptionPane.showMessageDialog(parent, message,
                 "Invalid arguments", JOptionPane.ERROR_MESSAGE);
+    }
+
+    /**
+     * Puts keyboard focus with all text selected into the field it is
+     * attached to as soon as the dialog hosting it becomes visible.
+     */
+    private static class RequestFocusOnShow implements AncestorListener {
+        @Override
+        public void ancestorAdded(AncestorEvent event) {
+            JTextField field = (JTextField) event.getComponent();
+            SwingUtilities.invokeLater(() -> {
+                field.requestFocusInWindow();
+                field.selectAll();
+            });
+        }
+
+        @Override
+        public void ancestorRemoved(AncestorEvent event) {
+        }
+
+        @Override
+        public void ancestorMoved(AncestorEvent event) {
+        }
     }
 
     private static long parseLong(String text) throws NumberFormatException {

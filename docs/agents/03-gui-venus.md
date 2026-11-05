@@ -29,6 +29,7 @@ VenusUI (JFrame)
 | `EditTabbedPane.java` | Вкладки открытых файлов (создаёт `EditPane`) |
 | `Editor.java` | Менеджер файлов: Open/Save-каталоги (персистятся через `FileDirectoryPersistence`), делегирует `EditTabbedPane` |
 | `FileDirectoryPersistence.java` | Хранение каталогов диалогов Open/Save в `java.util.prefs` (записываются при выборе файла, восстанавливаются при создании `Editor`) |
+| `FunctionArgumentsPersistence.java` | Хранение последних аргументов диалога запуска функции в `java.util.prefs` (ключ — путь открытого файла) |
 | `ExecutePane.java` | Окно выполнения: `TextSegmentWindow`, `DataSegmentWindow`, `LabelsWindow` + два `NumberDisplayBaseChooser` (hex/dec для адресов и значений) |
 | `TextSegmentWindow.java` | Таблица сегмента `.text`: дизассемблер, брейкпоинты (чекбоксы), подсветка текущей инструкции; также хранит аргументы программы (`getProgramArguments()`) |
 | `DataSegmentWindow.java` | Таблица памяти сегмента данных, редактирование значений |

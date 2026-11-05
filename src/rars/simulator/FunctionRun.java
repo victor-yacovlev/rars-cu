@@ -36,7 +36,8 @@ public class FunctionRun {
     public static volatile long[] arguments = new long[0];
 
     /**
-     * Whether the function signature declared a return value.
+     * Whether the function returns a value: per the signature, or assumed
+     * integer when no signature is present.
      */
     public static volatile boolean hasReturnValue = false;
 
