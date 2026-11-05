@@ -25,28 +25,44 @@ Any menu item not appropriate in a given situation is disabled.</li>
     editor without these features is still available and can be selected in the Editor Settings dialog.
     It supports a single font which can be modified in the Editor Settings dialog.
     The bottom border of either editor includes the cursor line
-    and column position and there is a checkbox to display line numbers.
-    They are displayed outside the editing area.  If you use an external editor, RARS provides
+    and column position.  Line numbers are always displayed in the margin to the
+    left of the editing area; a click on a line number toggles a breakpoint for
+    that line (see the Debugging help).  Both <tt>#</tt> and <tt>//</tt> (as in gcc)
+    start a comment that extends to the end of the line.  If you use an external editor, RARS provides
     a convenience setting that will automatically assemble a file as soon as it is opened.  See
     the Settings menu.
-<li><b>Message Areas</b>: There are two tabbed message areas at the
-bottom of the screen.  The <i>Run I/O</i> tab is used at runtime for 
-displaying console output and entering console input as program execution progresses.  
-You have the option of entering console input into a pop-up dialog then echoes to the message area.  
-The <i>RARS Messages</i> tab is used for other messages such as assembly or
-runtime errors and informational messages.  You can click on assembly error messages to
-select the corresponding line of code in the editor.
+<li><b>Message Areas</b>: There are two message areas shown side by side at the
+bottom of the screen: <i>RARS Messages</i> on the left and <i>Run I/O</i> on the right.
+The <i>Run I/O</i> area is used at runtime for displaying console output and entering
+console input as program execution progresses.  You have the option of entering console
+input into a pop-up dialog which then echoes to the message area.  The <i>RARS Messages</i>
+area is used for other messages such as assembly or runtime errors and informational
+messages.  You can click on assembly error messages to select the corresponding line of
+code in the editor.  The contents of either area can be cleared through its context menu
+(right click).
+<li><b>Files and Projects</b>: Every open file is shown as a top-level tab.
+Each file tab contains two sub-tabs: <i>Edit</i> (the program text) and <i>Memory</i>
+(memory and registers of the assembled program).  Every open file is treated as an
+independent project: it is assembled and executed separately from the other open files,
+and only one program can be executing at a time.  Switching to another file's tab
+activates that file's project (its assembled program is restored if necessary); while a
+program is executing, the other file tabs are temporarily disabled.
+
 <li><b>Registers</b>: Registers are displayed at all times, even
 when you are editing and not running a program.  While writing your program,
 this serves as a useful reference for register names and their conventional
-uses (hover mouse over the register name to see tool tips).  There are three
-register tabs: the Register File (integer registers $0 through $31 plus LO,
+uses (hover mouse over the register name to see tool tips).  Integer register
+values are always displayed in three representations: signed decimal, unsigned decimal
+and hexadecimal.  There are three register tabs: the Register File (integer registers $0 through $31 plus LO,
 HI and the Program Counter), selected Coprocesor 0 registers (exceptions and
 interrupts), and Coprocessor 1 floating point registers.
 
 <li><b>Assembly</b>: Select <i>Assemble</i> from the <i>Run</i> menu or the
-corresponding toolbar icon to assemble the file currently in the Edit tab.
-files in current directory.</i>  With the Assemble All setting turned on the assembler will assemble
+corresponding toolbar icon to assemble the file in the current tab.  The purpose of
+assembling is to obtain diagnostics about errors in the program, so assembling does not
+switch away from the editor: errors and warnings are shown in the <i>RARS Messages</i>
+area, and clicking a message jumps to the offending line in the editor.
+With the Assemble All setting turned on the assembler will assemble
 the current file as the "main" program and also assemble all other assembly
 files (*.asm; *.s) in the same directory. And with the Assemble Open option, currently
 open the assembler will also assemble currently open files. The results are linked and if all these
@@ -56,10 +72,31 @@ other files in the project.  There is also a setting that permits
 automatic loading and assembly of a selected exception handler file.
 
 
-<li><b>Execution</b>: Once a program successfully assembles, the
-registers are initialized and three windows
-in the Execute tab are filled: <i>Text Segment</i>, <i>Data Segment</i>,
-and <i>Program Labels</i>.  The major execution-time features are described below.
+<li><b>Execution</b>: <i>Go</i> (F5) and <i>Step</i> (F7) are available even
+while editing: they automatically assemble the current file first, and if the assembly
+fails, the run is cancelled (the errors are shown as usual).  Once a program successfully
+assembles, the registers are initialized and three windows in the file's <i>Memory</i>
+sub-tab are filled: <i>Text Segment</i>, <i>Data Segment</i>, and <i>Program Labels</i>.
+Switching to the <i>Memory</i> sub-tab always re-assembles the current file first, so the
+view corresponds to the current program text (while a program is executing, the live
+execution state is shown instead).  If the assembly fails, you are returned to the
+<i>Edit</i> sub-tab.
+<p>While a program is executing — from the first press of F5 or F7 (even before the first
+instruction executes) until it terminates, is stopped or reset — the program text is
+read-only: the editor is drawn with a slightly darker background, has no caret or
+selection, the text-modifying actions (Cut, Paste, Find/Replace, Undo/Redo) are disabled,
+and other file tabs are disabled.  <i>Stop</i> (F11) is always available during execution
+and force-terminates the program, also from step mode or while paused; a pause (F9) keeps
+the program suspended and the locks in place.
+<p>The major execution-time features are described below.
+
+<li><b>Running a function without <tt>main</tt></b>: If the program defines
+neither <tt>main</tt> nor <tt>_start</tt>, the first global function is treated as the
+entry point.  Before the run, RARS asks for its integer arguments in a dialog (values are
+placed in <tt>a0</tt>-<tt>a7</tt>, extra arguments on the stack; the previous values are
+remembered per file).  A C-like signature in a comment line directly above the function,
+e.g. <tt># int64_t poly(int64_t a, int64_t b)</tt>, fixes the parameter names and count.
+After the run, the result returned in <tt>a0</tt> is reported in the <i>Run I/O</i> area.
 
 <li><b>Labels Window</b>: Display of the Labels window (symbol table) is
 controlled through the Settings menu.  When displayed, you can click on any label
