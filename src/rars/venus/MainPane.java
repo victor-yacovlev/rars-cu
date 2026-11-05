@@ -97,7 +97,11 @@ public class MainPane extends JTabbedPane {
                         Component c = tabbedPane.getComponentAt(index);
                         ExecutePane executePane = Globals.getGui().getMainPane().getExecutePane();
                         if (c == executePane) {
-                            executePane.setWindowBounds();
+                            if (UiLayoutPersistence.hasSavedLayout()) {
+                                executePane.applyPersistedWindowBounds();
+                            } else {
+                                executePane.setWindowBounds();
+                            }
                             Globals.getGui().getMainPane().removeChangeListener(this);
                         }
                     }

@@ -118,12 +118,27 @@ public class ExecutePane extends JDesktopPane {
         Dimension textFullDim = new Dimension((int) (fullWidth), halfHeight);
         dataSegment.setBounds(0, textDim.height + 1, dataDim.width, dataDim.height);
         if (labelWindowVisible) {
-            System.out.println("YEA");
             textSegment.setBounds(0, 0, textDim.width, textDim.height);
             labelValues.setBounds(textDim.width + 1, 0, lablDim.width, lablDim.height);
         } else {
             textSegment.setBounds(0, 0, textFullDim.width, textFullDim.height);
             labelValues.setBounds(0, 0, 0, 0);
+        }
+    }
+
+    /**
+     * Restores the bounds of the Execute pane internal frames from the
+     * persisted layout (see UiLayoutPersistence). Defaults are computed by
+     * {@link #setWindowBounds()} first; frames with saved bounds then override
+     * them. Saved bounds are clamped so the frames stay visible and usable.
+     */
+    public void applyPersistedWindowBounds() {
+        setWindowBounds();
+        for (JInternalFrame frame : getAllFrames()) {
+            Rectangle saved = UiLayoutPersistence.getSavedInternalFrameBounds(frame.getTitle(), getSize());
+            if (saved != null) {
+                frame.setBounds(saved);
+            }
         }
     }
 

@@ -68,6 +68,8 @@ public class VenusUI extends JFrame {
     private ControlAndStatusWindow csrTab;
     private MessagesPane messagesPane;
     private JSplitPane splitter, horizonSplitter;
+    /** Bounds of the window when not maximized; tracked to persist layout between runs. */
+    private Rectangle lastNormalBounds;
     JPanel north;
 
     private int frameState; // see windowActivated() and windowDeactivated()
@@ -213,12 +215,21 @@ public class VenusUI extends JFrame {
         // The following has side effect of establishing menu state
         FileStatus.set(FileStatus.NO_FILE);
 
-        // This is invoked when opening the app.  It will set the app to
-        // appear at full screen size.
-        this.addWindowListener(
-                new WindowAdapter() {
-                    public void windowOpened(WindowEvent e) {
-                        mainUI.setExtendedState(JFrame.MAXIMIZED_BOTH);
+        // This is invoked when opening the app.  Restore the persisted window
+        // geometry and UI layout if available; otherwise default to full screen.
+        // Track un-maximized bounds while the window is moved/resized.
+        this.addComponentListener(
+                new ComponentAdapter() {
+                    public void componentResized(ComponentEvent e) {
+                        if ((mainUI.getExtendedState() & JFrame.MAXIMIZED_BOTH) == 0) {
+                            lastNormalBounds = mainUI.getBounds();
+                        }
+                    }
+
+                    public void componentMoved(ComponentEvent e) {
+                        if ((mainUI.getExtendedState() & JFrame.MAXIMIZED_BOTH) == 0) {
+                            lastNormalBounds = mainUI.getBounds();
+                        }
                     }
                 });
 
@@ -228,6 +239,7 @@ public class VenusUI extends JFrame {
                 new WindowAdapter() {
                     public void windowClosing(WindowEvent e) {
                         if (mainUI.editor.closeAll()) {
+                            saveUiLayout();
                             System.exit(0);
                         }
                     }
@@ -238,8 +250,19 @@ public class VenusUI extends JFrame {
         // the GUI frame will be hidden but I want it to do nothing.
         this.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
 
+        // Keep the window usable no matter what geometry was persisted.
+        this.setMinimumSize(new Dimension(600, 400));
+
         this.pack();
+        boolean layoutRestored = UiLayoutPersistence.applyFrameGeometry(this);
         this.setVisible(true);
+        if (!layoutRestored) {
+            // No saved geometry: legacy behavior — start maximized.
+            this.setExtendedState(JFrame.MAXIMIZED_BOTH);
+        } else {
+            // Dividers can only be positioned once the components are laid out.
+            SwingUtilities.invokeLater(() -> UiLayoutPersistence.applyDividersAndTabs(this));
+        }
 
         // Open files
         if (!this.editor.open(paths)) {
@@ -304,6 +327,7 @@ public class VenusUI extends JFrame {
             fileExitAction = new GuiAction("Exit", null, "Exit Rars", KeyEvent.VK_X, null) {
                 public void actionPerformed(ActionEvent e) {
                     if (editor.closeAll()) {
+                        saveUiLayout();
                         System.exit(0);
                     }
                 }
@@ -1129,6 +1153,34 @@ public class VenusUI extends JFrame {
 
     public RegistersPane getRegistersPane() {
         return registersPane;
+    }
+
+    /**
+     * Main vertical splitter (edit/execute + messages panes). Used for layout persistence.
+     */
+    public JSplitPane getMainSplitter() {
+        return splitter;
+    }
+
+    /**
+     * Horizontal splitter (main area + registers pane). Used for layout persistence.
+     */
+    public JSplitPane getRegistersSplitter() {
+        return horizonSplitter;
+    }
+
+    /**
+     * Window bounds of the last non-maximized state, or null if never tracked.
+     */
+    public Rectangle getLastNormalBounds() {
+        return lastNormalBounds;
+    }
+
+    /**
+     * Persists window geometry and UI element layout. Never throws.
+     */
+    private void saveUiLayout() {
+        UiLayoutPersistence.save(this);
     }
 
     /**
