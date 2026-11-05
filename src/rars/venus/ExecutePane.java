@@ -194,10 +194,13 @@ public class ExecutePane extends JDesktopPane {
         this.getFloatingPointWindow().clearWindow();
         this.getControlAndStatusWindow().clearWindow();
         this.getLabelsWindow().clearWindow();
-        // seems to be required, to display cleared Execute tab contents...
-        if (mainUI.getMainPane().getSelectedComponent() == this) {
-            mainUI.getMainPane().setSelectedComponent(mainUI.getMainPane().getEditTabbedPane());
-            mainUI.getMainPane().setSelectedComponent(this);
+        // Seems to be required, to display the cleared contents: briefly flip
+        // the hosting file's sub-tab away from "Memory" and back.
+        FileViewPane host = mainUI.getMainPane().getMemoryHost();
+        if (host != null && host.isMemoryTabSelected()
+                && host.getEditPane() == mainUI.getMainPane().getEditPane()) {
+            host.showEdit();
+            host.showMemory();
         }
     }
 

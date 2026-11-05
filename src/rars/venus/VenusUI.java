@@ -1340,7 +1340,7 @@ public class VenusUI extends JFrame {
     public void clearHighlightedLines() {
         EditTabbedPane editTabbedPane = (EditTabbedPane) getMainPane().getEditTabbedPane();
         for (int i = 0; i < editTabbedPane.getTabCount(); i++) {
-            ((EditPane) editTabbedPane.getComponentAt(i)).setHighlightedLine(0);
+            ((FileViewPane) editTabbedPane.getComponentAt(i)).getEditPane().setHighlightedLine(0);
         }
     }
 

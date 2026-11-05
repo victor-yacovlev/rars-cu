@@ -1,6 +1,7 @@
 import rars.Globals;
 import rars.venus.EditPane;
 import rars.venus.EditTabbedPane;
+import rars.venus.FileViewPane;
 import rars.venus.FileStatus;
 import rars.venus.VenusUI;
 
@@ -65,8 +66,8 @@ public class GuiTabsSmokeTest {
         // Assemble file B (current tab) and verify it is runnable.
         onEdt(() -> ui.getRunAssembleAction().actionPerformed(null));
         check("after assemble: menu state RUNNABLE", VenusUI.getMenuState() == FileStatus.RUNNABLE);
-        check("after assemble: stays on the Edit tab (assembly is for diagnostics)",
-                ui.getMainPane().getSelectedComponent() == ui.getMainPane().getEditTabbedPane());
+        check("after assemble: stays on the Edit sub-tab (assembly is for diagnostics)",
+                tabs.getCurrentFileView().getSelectedIndex() == FileViewPane.EDIT_TAB);
         check("after assemble: FileStatus.assembled", FileStatus.isAssembled());
         check("after assemble: per-file assembled", paneB.isAssembled());
 
@@ -147,8 +148,8 @@ public class GuiTabsSmokeTest {
         check("after first F7 (prepare): edit actions disabled",
                 !ui.areEditActionsEnabled());
         check("after first F7 (prepare): other tab shown disabled",
-                !tabs.isEnabledAt(tabs.indexOfComponent(paneA))
-                        && tabs.isEnabledAt(tabs.indexOfComponent(paneB)));
+                !tabs.isEnabledAt(tabs.indexOfComponent(tabs.fileViewFor(paneA)))
+                        && tabs.isEnabledAt(tabs.indexOfComponent(tabs.fileViewFor(paneB))));
         check("after first F7 (prepare): editor not focusable (no keyboard cursor movement)",
                 !paneB.getSourceComponent().isFocusable());
         onEdt(() -> tabs.setCurrentEditTab(paneA));
@@ -168,7 +169,7 @@ public class GuiTabsSmokeTest {
         check("stepped to completion: edit actions enabled",
                 ui.areEditActionsEnabled());
         check("stepped to completion: tab enabled again",
-                tabs.isEnabledAt(tabs.indexOfComponent(paneA)));
+                tabs.isEnabledAt(tabs.indexOfComponent(tabs.fileViewFor(paneA))));
         check("stepped to completion: editor focusable again",
                 paneB.getSourceComponent().isFocusable());
         onEdt(() -> tabs.setCurrentEditTab(paneA));
@@ -221,25 +222,21 @@ public class GuiTabsSmokeTest {
 
         // The "Execute" tab is now "Memory": switching to it force-assembles
         // the current file.
-        check("main tab 1 is named Memory",
-                "Memory".equals(ui.getMainPane().getTitleAt(1)));
-        onEdt(() -> ui.getMainPane().setSelectedComponent(
-                ui.getMainPane().getExecutePane()));
+        check("file tab has a Memory sub-tab",
+                "Memory".equals(tabs.getCurrentFileView().getTitleAt(FileViewPane.MEMORY_TAB)));
+        onEdt(() -> tabs.getCurrentFileView().showMemory());
         check("switch to Memory with broken program: bounced back to Edit",
-                ui.getMainPane().getSelectedComponent()
-                        == ui.getMainPane().getEditTabbedPane());
+                tabs.getCurrentFileView().getSelectedIndex() == FileViewPane.EDIT_TAB);
         check("switch to Memory with broken program: still not assembled",
                 !FileStatus.isAssembled());
         // Restore a valid program and switch again: assembly succeeds now.
         onEdt(() -> paneB.setSourceCode(
                 ".text\nmain:\n    li a7, 93\n    li a0, 42\n    ecall\n", true));
-        onEdt(() -> ui.getMainPane().setSelectedComponent(
-                ui.getMainPane().getExecutePane()));
+        onEdt(() -> tabs.getCurrentFileView().showMemory());
         check("switch to Memory assembles: menu state RUNNABLE",
                 VenusUI.getMenuState() == FileStatus.RUNNABLE);
-        check("switch to Memory assembles: stays on the Memory tab",
-                ui.getMainPane().getSelectedComponent()
-                        == ui.getMainPane().getExecutePane());
+        check("switch to Memory assembles: stays on the Memory sub-tab",
+                tabs.getCurrentFileView().getSelectedIndex() == FileViewPane.MEMORY_TAB);
         { // after the forced assembly the windows are re-laid out
             javax.swing.JInternalFrame ts = ui.getMainPane().getExecutePane().getTextSegmentWindow();
             java.awt.Rectangle desk = new java.awt.Rectangle(ui.getMainPane().getExecutePane().getSize());
@@ -247,8 +244,7 @@ public class GuiTabsSmokeTest {
             check("after forced assembly: Text Segment re-laid out (visible, large enough)",
                     !ts.isIcon() && desk.contains(b) && b.width >= desk.width / 2 && b.height >= desk.height / 3);
         }
-        onEdt(() -> ui.getMainPane().setSelectedComponent(
-                ui.getMainPane().getEditTabbedPane()));
+        onEdt(() -> tabs.getCurrentFileView().showEdit());
 
         if (failures == 0) {
             System.out.println("\nGUI smoke test: ALL CHECKS PASSED");

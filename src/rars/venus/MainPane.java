@@ -1,20 +1,13 @@
 package rars.venus;
 
-import rars.Globals;
-import rars.simulator.Simulator;
 import rars.venus.registers.ControlAndStatusWindow;
 import rars.venus.registers.FloatingPointWindow;
 import rars.venus.registers.RegistersWindow;
 
 import javax.swing.*;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
-import javax.swing.plaf.basic.BasicTabbedPaneUI;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 
-	
-	/*
+/*
 Copyright (c) 2003-2006,  Pete Sanderson and Kenneth Vollmar
 
 Developed by Pete Sanderson (psanderson@otterbein.edu)
@@ -25,39 +18,43 @@ a copy of this software and associated documentation files (the
 "Software"), to deal in the Software without restriction, including 
 without limitation the rights to use, copy, modify, merge, publish, 
 distribute, sublicense, and/or sell copies of the Software, and to 
-permit persons to whom the Software is furnished to do so, subject 
-to the following conditions:
+permit persons to whom the Software is furnished to do so, subject to 
+the following conditions:
 
 The above copyright notice and this permission notice shall be 
 included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF 
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR 
-ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF 
-CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY 
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (MIT license, http://www.opensource.org/licenses/mit-license.html)
  */
 
 /**
- * Creates the tabbed areas in the UI and also created the internal windows that
- * exist in them.
+ * Container for the per-file editor tabs.  Each top-level tab is a
+ * {@link FileViewPane} representing one open file with "Edit" and "Memory"
+ * sub-tabs.  The memory/registers view (ExecutePane) is a singleton shared by
+ * all files: it is moved into the sub-tab of the file whose "Memory" tab is
+ * selected (see {@link #attachMemoryView(FileViewPane)}).
  *
  * @author Sanderson and Bumgarner
  **/
 
-public class MainPane extends JTabbedPane {
-    EditPane editTab;
-    ExecutePane executeTab;
+public class MainPane extends JPanel {
     EditTabbedPane editTabbedPane;
+    ExecutePane executeTab;
 
     private VenusUI mainUI;
-    // Guards the assemble-on-Memory-tab-selection listener against
-    // re-entrancy (tab selection changes made while assembling).
-    private boolean assemblingForMemoryView = false;
+    // The file tab currently hosting the shared ExecutePane, or null.
+    private FileViewPane memoryHost;
+    // The internal frame bounds are initialized on the first hosting only;
+    // afterwards they travel with the pane.
+    private boolean executeBoundsInitialized = false;
 
     /**
      * Constructor for the MainPane class.
@@ -65,97 +62,17 @@ public class MainPane extends JTabbedPane {
 
     public MainPane(VenusUI appFrame, Editor editor, RegistersWindow regs,
                     FloatingPointWindow cop1Regs, ControlAndStatusWindow cop0Regs) {
-        super();
+        super(new BorderLayout());
         this.mainUI = appFrame;
 
-        this.setTabPlacement(JTabbedPane.TOP); //LEFT);
-        if (this.getUI() instanceof BasicTabbedPaneUI) {
-            BasicTabbedPaneUI ui = (BasicTabbedPaneUI) this.getUI();
-        }
         editTabbedPane = new EditTabbedPane(appFrame, editor, this);
         executeTab = new ExecutePane(appFrame, regs, cop1Regs, cop0Regs);
-        String editTabTitle = "Edit";
-        String executeTabTitle = "Memory";
-        Icon editTabIcon = null;//new ImageIcon(Toolkit.getDefaultToolkit().getImage(this.getClass().getResource(Globals.imagesPath+"Edit_tab.jpg")));
-        Icon executeTabIcon = null;//new ImageIcon(Toolkit.getDefaultToolkit().getImage(this.getClass().getResource(Globals.imagesPath+"Execute_tab.jpg")));
 
-        this.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
-        this.addTab(editTabTitle, editTabIcon, editTabbedPane);
-        this.setForeground(Color.black);
-
-        this.addTab(executeTabTitle, executeTabIcon, executeTab);
-
-        this.setToolTipTextAt(0, "Text editor for composing RISCV programs.");
-        this.setToolTipTextAt(1, "View memory and registers of the assembled program.  Switching to this tab re-assembles the current file.");
-      
-      	/* Listener has one specific purpose: when Execute tab is selected for the 
-           * first time, set the bounds of its internal frames by invoking the
-      	 * setWindowsBounds() method.  Once this occurs, listener removes itself!
-      	 * We do NOT want to reset bounds each time Execute tab is selected.
-      	 * See ExecutePane.setWindowsBounds documentation for more details.
-      	 */
-        this.addChangeListener(
-                new ChangeListener() {
-                    public void stateChanged(ChangeEvent ce) {
-                        JTabbedPane tabbedPane = (JTabbedPane) ce.getSource();
-                        int index = tabbedPane.getSelectedIndex();
-                        Component c = tabbedPane.getComponentAt(index);
-                        ExecutePane executePane = Globals.getGui().getMainPane().getExecutePane();
-                        if (c == executePane) {
-                            if (UiLayoutPersistence.hasSavedLayout()) {
-                                executePane.applyPersistedWindowBounds();
-                            } else {
-                                executePane.setWindowBounds();
-                            }
-                            Globals.getGui().getMainPane().removeChangeListener(this);
-                        }
-                    }
-                });
-
-        // The Memory tab shows memory and registers of the assembled program,
-        // so switching to it force-assembles the current file: the view then
-        // always corresponds to the current source text.  While a program is
-        // executing (run session active), the live execution state is shown
-        // instead and no assembly is performed.  If the assembly fails, the
-        // user is returned to the Edit tab (errors are in the Messages pane).
-        this.addChangeListener(
-                new ChangeListener() {
-                    public void stateChanged(ChangeEvent ce) {
-                        JTabbedPane tabbedPane = (JTabbedPane) ce.getSource();
-                        int index = tabbedPane.getSelectedIndex();
-                        Component c = (index >= 0) ? tabbedPane.getComponentAt(index) : null;
-                        if (c != executeTab || assemblingForMemoryView) {
-                            return;
-                        }
-                        if (Simulator.getInstance().isSimulating()
-                                || editTabbedPane.isRunSessionActive()) {
-                            return; // show the live execution state
-                        }
-                        assemblingForMemoryView = true;
-                        try {
-                            Globals.getGui().getRunAssembleAction().actionPerformed(
-                                    new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "MemoryTab"));
-                            if (FileStatus.get() != FileStatus.RUNNABLE) {
-                                // nothing to show (no file open or assembly errors)
-                                setSelectedComponent(editTabbedPane);
-                            } else {
-                                // Re-layout the internal windows so the Text
-                                // Segment window of the freshly assembled
-                                // program is visible and large enough.  Deferred
-                                // until the tab activation layout pass is done,
-                                // so the final desktop size is used.
-                                SwingUtilities.invokeLater(() -> executeTab.relayoutWindows());
-                            }
-                        } finally {
-                            assemblingForMemoryView = false;
-                        }
-                    }
-                });
+        this.add(editTabbedPane, BorderLayout.CENTER);
     }
 
     /**
-     * Returns current edit pane.  Implementation changed for MARS 4.0 support
-     * for multiple panes, but specification is same.
+     * Returns current edit pane.
      *
      * @return the editor pane
      */
@@ -164,7 +81,7 @@ public class MainPane extends JTabbedPane {
     }
 
     /**
-     * Returns component containing editor display
+     * Returns the top-level tabbed pane of open files.
      *
      * @return the editor tabbed pane
      */
@@ -173,7 +90,7 @@ public class MainPane extends JTabbedPane {
     }
 
     /**
-     * returns component containing execution-time display
+     * returns the shared memory/registers view.
      *
      * @return the execute pane
      */
@@ -182,13 +99,61 @@ public class MainPane extends JTabbedPane {
     }
 
     /**
-     * returns component containing execution-time display.
+     * returns the shared memory/registers view.
      * Same as getExecutePane().
      *
      * @return the execute pane
      */
     public ExecutePane getExecuteTab() {
         return executeTab;
+    }
+
+    /**
+     * The file tab currently hosting the shared memory view, or null.
+     */
+    public FileViewPane getMemoryHost() {
+        return memoryHost;
+    }
+
+    /**
+     * Move the shared memory/registers view into the given file's "Memory"
+     * sub-tab (detaching it from the file that hosted it before, if any).
+     * Called when a file's "Memory" sub-tab is selected.  On the first
+     * hosting ever, the internal window bounds are initialized (from the
+     * persisted layout if available).
+     *
+     * @param host the file tab to host the view, or null to just detach.
+     */
+    public void attachMemoryView(FileViewPane host) {
+        if (memoryHost == host) {
+            return;
+        }
+        if (memoryHost != null) {
+            memoryHost.detachMemoryView();
+        }
+        memoryHost = host;
+        if (host != null) {
+            host.hostMemoryView(executeTab);
+            if (!executeBoundsInitialized) {
+                executeBoundsInitialized = true;
+                if (UiLayoutPersistence.hasSavedLayout()) {
+                    executeTab.applyPersistedWindowBounds();
+                } else {
+                    executeTab.setWindowBounds();
+                }
+            }
+        }
+    }
+
+    /**
+     * Detach the shared memory view if it is currently hosted by the given
+     * file tab (called before that file tab is removed).
+     */
+    public void detachMemoryView(FileViewPane host) {
+        if (memoryHost == host) {
+            memoryHost = null;
+            host.detachMemoryView();
+        }
     }
 
 }
