@@ -978,6 +978,12 @@ public class Settings extends Observable {
             System.out.println("RARS System error: unable to read Settings.properties defaults. Using built-in defaults.");
         }
         getSettingsFromPreferences();
+        // This fork force-enables the following settings (they are no longer
+        // in the Settings menu): override any previously persisted values.
+        booleanSettingsValues.put(Bool.ASSEMBLE_ON_OPEN, true);
+        booleanSettingsValues.put(Bool.EXTENDED_ASSEMBLER_ENABLED, true);
+        booleanSettingsValues.put(Bool.PROGRAM_ARGUMENTS, true);
+        booleanSettingsValues.put(Bool.RV64_ENABLED, true);
     }
 
     // Default values.  Will be replaced if available from property file or Preferences object.

@@ -3,7 +3,6 @@ package rars.venus;
 import rars.Globals;
 import rars.ProgramStatement;
 import rars.Settings;
-import rars.riscv.InstructionSet;
 import rars.riscv.dump.DumpFormatLoader;
 import rars.riscv.hardware.RegisterFile;
 import rars.simulator.Simulator;
@@ -89,8 +88,8 @@ public class VenusUI extends JFrame {
     private JMenuItem editUndo, editRedo, editCut, editCopy, editPaste, editFindReplace, editSelectAll;
     private JMenuItem runGo, runStep, runBackstep, runReset, runAssemble, runStop, runPause, runClearBreakpoints, runToggleBreakpoints;
     private JCheckBoxMenuItem settingsLabel, settingsPopupInput, settingsAddressDisplayBase,
-            settingsExtended, settingsAssembleOnOpen, settingsAssembleAll, settingsAssembleOpen, settingsWarningsAreErrors,
-            settingsStartAtMain, settingsProgramArguments, settingsSelfModifyingCode, settingsRV64, settingsDeriveCurrentWorkingDirectory;
+            settingsAssembleAll, settingsAssembleOpen, settingsWarningsAreErrors,
+            settingsStartAtMain, settingsSelfModifyingCode, settingsDeriveCurrentWorkingDirectory;
     private JMenuItem settingsExceptionHandler, settingsEditor, settingsHighlighting, settingsMemoryConfiguration;
     private JMenuItem helpHelp, helpAbout;
 
@@ -112,10 +111,10 @@ public class VenusUI extends JFrame {
     private Action runAssembleAction, runGoAction, runStepAction, runBackstepAction, runResetAction,
             runStopAction, runPauseAction, runClearBreakpointsAction, runToggleBreakpointsAction;
     private Action settingsLabelAction, settingsPopupInputAction, settingsAddressDisplayBaseAction,
-            settingsExtendedAction, settingsAssembleOnOpenAction, settingsAssembleOpenAction, settingsAssembleAllAction,
-            settingsWarningsAreErrorsAction, settingsStartAtMainAction, settingsProgramArgumentsAction,
+            settingsAssembleOpenAction, settingsAssembleAllAction,
+            settingsWarningsAreErrorsAction, settingsStartAtMainAction,
             settingsExceptionHandlerAction, settingsEditorAction, settingsHighlightingAction, settingsMemoryConfigurationAction,
-            settingsSelfModifyingCodeAction, settingsRV64Action, settingsDeriveCurrentWorkingDirectoryAction;
+            settingsSelfModifyingCodeAction, settingsDeriveCurrentWorkingDirectoryAction;
     private Action helpHelpAction, helpAboutAction;
 
 
@@ -452,12 +451,6 @@ public class VenusUI extends JFrame {
                     mainPane.getExecutePane().getAddressDisplayBaseChooser().setSelected(isHex);
                 }
             };
-            settingsExtendedAction = new SettingsAction("Permit extended (pseudo) instructions and formats",
-                    "If set, extended (pseudo) instructions are formats are permitted.",
-                    Settings.Bool.EXTENDED_ASSEMBLER_ENABLED);
-            settingsAssembleOnOpenAction = new SettingsAction("Assemble file upon opening",
-                    "If set, a file will be automatically assembled as soon as it is opened.  File Open dialog will show most recently opened file.",
-                    Settings.Bool.ASSEMBLE_ON_OPEN);
             settingsAssembleAllAction = new SettingsAction("Assemble all files in directory",
                     "If set, all files in current directory will be assembled when Assemble operation is selected.",
                     Settings.Bool.ASSEMBLE_ALL);
@@ -470,32 +463,10 @@ public class VenusUI extends JFrame {
             settingsStartAtMainAction = new SettingsAction("Initialize Program Counter to global 'main' if defined",
                     "If set, assembler will initialize Program Counter to text address globally labeled 'main', if defined.",
                     Settings.Bool.START_AT_MAIN);
-            settingsProgramArgumentsAction = new SettingsAction("Program arguments provided to program",
-                    "If set, program arguments for the program can be entered in border of Text Segment window.",
-                    Settings.Bool.PROGRAM_ARGUMENTS) {
-                public void handler(boolean selected) {
-                    if (selected) {
-                        mainPane.getExecutePane().getTextSegmentWindow().addProgramArgumentsPanel();
-                    } else {
-                        mainPane.getExecutePane().getTextSegmentWindow().removeProgramArgumentsPanel();
-                    }
-                }
-            };
             settingsSelfModifyingCodeAction = new SettingsAction("Self-modifying code",
                     "If set, the program can write and branch to both text and data segments.",
                     Settings.Bool.SELF_MODIFYING_CODE_ENABLED);
 
-            // TODO: review this
-            settingsRV64Action = new SettingsAction("64 bit",
-                    "If set, registers are 64 bits wide and new instructions are available",
-                    Settings.Bool.RV64_ENABLED) {
-                public void handler(boolean value) {
-                    InstructionSet.rv64 = value;
-                    Globals.instructionSet.populate();
-                    registersTab.updateRegisters();
-                    csrTab.updateRegisters();
-                }
-            };
             settingsDeriveCurrentWorkingDirectoryAction = new SettingsAction("Derive current working directory",
                     "If set, the working directory is derived from the main file instead of the RARS executable directory.",
                     Settings.Bool.DERIVE_CURRENT_WORKING_DIRECTORY);
@@ -642,16 +613,10 @@ public class VenusUI extends JFrame {
         settingsAddressDisplayBase.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.DISPLAY_ADDRESSES_IN_HEX));//mainPane.getExecutePane().getValueDisplayBaseChooser().isSelected());
         // Tell the corresponding JCheckBox in the Execute Pane about me -- it has already been created.
         mainPane.getExecutePane().getAddressDisplayBaseChooser().setSettingsMenuItem(settingsAddressDisplayBase);
-        settingsExtended = new JCheckBoxMenuItem(settingsExtendedAction);
-        settingsExtended.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.EXTENDED_ASSEMBLER_ENABLED));
         settingsSelfModifyingCode = new JCheckBoxMenuItem(settingsSelfModifyingCodeAction);
         settingsSelfModifyingCode.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.SELF_MODIFYING_CODE_ENABLED));
-        settingsRV64 = new JCheckBoxMenuItem(settingsRV64Action);
-        settingsRV64.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.RV64_ENABLED));
         settingsDeriveCurrentWorkingDirectory = new JCheckBoxMenuItem(settingsDeriveCurrentWorkingDirectoryAction);
         settingsDeriveCurrentWorkingDirectory.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.DERIVE_CURRENT_WORKING_DIRECTORY));
-        settingsAssembleOnOpen = new JCheckBoxMenuItem(settingsAssembleOnOpenAction);
-        settingsAssembleOnOpen.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ON_OPEN));
         settingsAssembleAll = new JCheckBoxMenuItem(settingsAssembleAllAction);
         settingsAssembleAll.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ALL));
         settingsAssembleOpen = new JCheckBoxMenuItem(settingsAssembleOpenAction);
@@ -660,28 +625,22 @@ public class VenusUI extends JFrame {
         settingsWarningsAreErrors.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.WARNINGS_ARE_ERRORS));
         settingsStartAtMain = new JCheckBoxMenuItem(settingsStartAtMainAction);
         settingsStartAtMain.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.START_AT_MAIN));
-        settingsProgramArguments = new JCheckBoxMenuItem(settingsProgramArgumentsAction);
-        settingsProgramArguments.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.PROGRAM_ARGUMENTS));
         settingsEditor = new JMenuItem(settingsEditorAction);
         settingsHighlighting = new JMenuItem(settingsHighlightingAction);
         settingsExceptionHandler = new JMenuItem(settingsExceptionHandlerAction);
         settingsMemoryConfiguration = new JMenuItem(settingsMemoryConfigurationAction);
 
         settings.add(settingsLabel);
-        settings.add(settingsProgramArguments);
         settings.add(settingsPopupInput);
         settings.add(settingsAddressDisplayBase);
         settings.addSeparator();
-        settings.add(settingsAssembleOnOpen);
         settings.add(settingsAssembleAll);
         settings.add(settingsAssembleOpen);
         settings.add(settingsWarningsAreErrors);
         settings.add(settingsStartAtMain);
         settings.add(settingsDeriveCurrentWorkingDirectory);
         settings.addSeparator();
-        settings.add(settingsExtended);
         settings.add(settingsSelfModifyingCode);
-        settings.add(settingsRV64);
         settings.addSeparator();
         settings.add(settingsEditor);
         settings.add(settingsHighlighting);

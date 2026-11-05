@@ -1,4 +1,5 @@
 import rars.Globals;
+import rars.Settings;
 import rars.venus.EditPane;
 import rars.venus.EditTabbedPane;
 import rars.venus.FileViewPane;
@@ -62,6 +63,21 @@ public class GuiTabsSmokeTest {
         EditPane paneB = tabs.getEditPaneForFile(fileB.getPath());
         check("both files opened in tabs", paneA != null && paneB != null);
         check("last opened file is selected", tabs.getCurrentEditTab() == paneB);
+
+        // Four settings are force-enabled and removed from the Settings menu.
+        check("forced setting: program arguments enabled",
+                Globals.getSettings().getBooleanSetting(Settings.Bool.PROGRAM_ARGUMENTS));
+        check("forced setting: extended (pseudo) instructions enabled",
+                Globals.getSettings().getBooleanSetting(Settings.Bool.EXTENDED_ASSEMBLER_ENABLED));
+        check("forced setting: rv64 enabled",
+                Globals.getSettings().getBooleanSetting(Settings.Bool.RV64_ENABLED));
+        check("forced setting: assemble-on-open enabled",
+                Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ON_OPEN));
+        check("Settings menu: forced items removed",
+                !settingsMenuHasItem(ui, "Program arguments provided to program")
+                        && !settingsMenuHasItem(ui, "Permit extended (pseudo) instructions and formats")
+                        && !settingsMenuHasItem(ui, "64 bit")
+                        && !settingsMenuHasItem(ui, "Assemble file upon opening"));
 
         // Assemble file B (current tab) and verify it is runnable.
         onEdt(() -> ui.getRunAssembleAction().actionPerformed(null));
@@ -309,6 +325,24 @@ public class GuiTabsSmokeTest {
         }
         System.out.println("\nGUI smoke test: " + failures + " CHECK(S) FAILED");
         return 1;
+    }
+
+    // Whether the Settings menu contains a menu item with the given label.
+    private static boolean settingsMenuHasItem(VenusUI ui, String label) {
+        javax.swing.JMenuBar mb = ui.menu;
+        for (int i = 0; i < mb.getMenuCount(); i++) {
+            javax.swing.JMenu m = mb.getMenu(i);
+            if (m == null || !"Settings".equals(m.getText())) {
+                continue;
+            }
+            for (int j = 0; j < m.getItemCount(); j++) {
+                javax.swing.JMenuItem item = m.getItem(j);
+                if (item != null && label.equals(item.getText())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // Simulates a mouse click on the line numbers margin at the given y.
