@@ -68,8 +68,16 @@ public class Editor {
         // Directory from which MARS was launched. Guaranteed to have a value.
         defaultOpenDirectory = System.getProperty("user.dir");
         defaultSaveDirectory = System.getProperty("user.dir");
+        // Restore last-used dialog directories, if any were persisted and
+        // still exist. The setters validate and fall back to the default.
         currentOpenDirectory = defaultOpenDirectory;
         currentSaveDirectory = defaultSaveDirectory;
+        if (FileDirectoryPersistence.getOpenDirectory() != null) {
+            setCurrentOpenDirectory(FileDirectoryPersistence.getOpenDirectory());
+        }
+        if (FileDirectoryPersistence.getSaveDirectory() != null) {
+            setCurrentSaveDirectory(FileDirectoryPersistence.getSaveDirectory());
+        }
     }
 
     // TODO: this doesn't really fit here, it doesn't interact with the GUI
@@ -112,6 +120,7 @@ public class Editor {
             this.currentOpenDirectory = defaultOpenDirectory;
         } else {
             this.currentOpenDirectory = currentOpenDirectory;
+            FileDirectoryPersistence.setOpenDirectory(currentOpenDirectory);
         }
     }
 
@@ -142,6 +151,7 @@ public class Editor {
             this.currentSaveDirectory = defaultSaveDirectory;
         } else {
             this.currentSaveDirectory = currentSaveDirectory;
+            FileDirectoryPersistence.setSaveDirectory(currentSaveDirectory);
         }
     }
 
