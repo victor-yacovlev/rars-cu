@@ -143,6 +143,22 @@ public class ExecutePane extends JDesktopPane {
     }
 
     /**
+     * Re-lays out the internal windows with the default arrangement and makes
+     * sure the Text Segment window is visible and large enough.  Used after a
+     * forced re-assembly when the Memory tab is selected: the freshly
+     * assembled program's text segment must be easy to see.
+     */
+    public void relayoutWindows() {
+        setWindowBounds();
+        try {
+            textSegment.setIcon(false);
+        } catch (java.beans.PropertyVetoException ignored) {
+            // frame vetoed the change; bounds were still restored above
+        }
+        textSegment.moveToFront();
+    }
+
+    /**
      * Show or hide the label window (symbol table).  If visible, it is displayed
      * to the right of the text segment and the latter is shrunk accordingly.
      *

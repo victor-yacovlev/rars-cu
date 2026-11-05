@@ -426,7 +426,7 @@ public class VenusUI extends JFrame {
                 }
             };
             settingsLabelAction = new SettingsAction("Show Labels Window (symbol table)",
-                    "Toggle visibility of Labels window (symbol table) in the Execute tab",
+                    "Toggle visibility of Labels window (symbol table) in the Memory tab",
                     Settings.Bool.LABEL_WINDOW_VISIBILITY) {
                 public void handler(boolean visibility) {
                     mainPane.getExecutePane().setLabelWindowVisibility(visibility);
@@ -497,7 +497,7 @@ public class VenusUI extends JFrame {
                     "View and modify text editor settings.", null, null
             );
             settingsHighlightingAction = new SettingsHighlightingAction("Highlighting...", null,
-                    "View and modify Execute Tab highlighting colors", null, null
+                    "View and modify Memory Tab highlighting colors", null, null
             );
             settingsExceptionHandlerAction = new SettingsExceptionHandlerAction("Exception Handler...", null,
                     "If set, the specified exception handler file will be included in all Assemble operations.",

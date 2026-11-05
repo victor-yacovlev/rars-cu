@@ -219,6 +219,37 @@ public class GuiTabsSmokeTest {
         check("failed auto-assembly: Go still available", ui.getRunGoAction().isEnabled());
         check("failed auto-assembly: Step still available", ui.getRunStepAction().isEnabled());
 
+        // The "Execute" tab is now "Memory": switching to it force-assembles
+        // the current file.
+        check("main tab 1 is named Memory",
+                "Memory".equals(ui.getMainPane().getTitleAt(1)));
+        onEdt(() -> ui.getMainPane().setSelectedComponent(
+                ui.getMainPane().getExecutePane()));
+        check("switch to Memory with broken program: bounced back to Edit",
+                ui.getMainPane().getSelectedComponent()
+                        == ui.getMainPane().getEditTabbedPane());
+        check("switch to Memory with broken program: still not assembled",
+                !FileStatus.isAssembled());
+        // Restore a valid program and switch again: assembly succeeds now.
+        onEdt(() -> paneB.setSourceCode(
+                ".text\nmain:\n    li a7, 93\n    li a0, 42\n    ecall\n", true));
+        onEdt(() -> ui.getMainPane().setSelectedComponent(
+                ui.getMainPane().getExecutePane()));
+        check("switch to Memory assembles: menu state RUNNABLE",
+                VenusUI.getMenuState() == FileStatus.RUNNABLE);
+        check("switch to Memory assembles: stays on the Memory tab",
+                ui.getMainPane().getSelectedComponent()
+                        == ui.getMainPane().getExecutePane());
+        { // after the forced assembly the windows are re-laid out
+            javax.swing.JInternalFrame ts = ui.getMainPane().getExecutePane().getTextSegmentWindow();
+            java.awt.Rectangle desk = new java.awt.Rectangle(ui.getMainPane().getExecutePane().getSize());
+            java.awt.Rectangle b = ts.getBounds();
+            check("after forced assembly: Text Segment re-laid out (visible, large enough)",
+                    !ts.isIcon() && desk.contains(b) && b.width >= desk.width / 2 && b.height >= desk.height / 3);
+        }
+        onEdt(() -> ui.getMainPane().setSelectedComponent(
+                ui.getMainPane().getEditTabbedPane()));
+
         if (failures == 0) {
             System.out.println("\nGUI smoke test: ALL CHECKS PASSED");
             return 0;

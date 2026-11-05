@@ -1,6 +1,7 @@
 package rars.venus;
 
 import rars.Globals;
+import rars.simulator.Simulator;
 import rars.venus.registers.ControlAndStatusWindow;
 import rars.venus.registers.FloatingPointWindow;
 import rars.venus.registers.RegistersWindow;
@@ -10,6 +11,7 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.plaf.basic.BasicTabbedPaneUI;
 import java.awt.*;
+import java.awt.event.ActionEvent;
 
 	
 	/*
@@ -53,6 +55,9 @@ public class MainPane extends JTabbedPane {
     EditTabbedPane editTabbedPane;
 
     private VenusUI mainUI;
+    // Guards the assemble-on-Memory-tab-selection listener against
+    // re-entrancy (tab selection changes made while assembling).
+    private boolean assemblingForMemoryView = false;
 
     /**
      * Constructor for the MainPane class.
@@ -70,7 +75,7 @@ public class MainPane extends JTabbedPane {
         editTabbedPane = new EditTabbedPane(appFrame, editor, this);
         executeTab = new ExecutePane(appFrame, regs, cop1Regs, cop0Regs);
         String editTabTitle = "Edit";
-        String executeTabTitle = "Execute"; //"<html><center>&nbsp;<br>E<br>x<br>e<br>c<br>u<br>t<br>e<br>&nbsp;</center></html>";
+        String executeTabTitle = "Memory";
         Icon editTabIcon = null;//new ImageIcon(Toolkit.getDefaultToolkit().getImage(this.getClass().getResource(Globals.imagesPath+"Edit_tab.jpg")));
         Icon executeTabIcon = null;//new ImageIcon(Toolkit.getDefaultToolkit().getImage(this.getClass().getResource(Globals.imagesPath+"Execute_tab.jpg")));
 
@@ -81,7 +86,7 @@ public class MainPane extends JTabbedPane {
         this.addTab(executeTabTitle, executeTabIcon, executeTab);
 
         this.setToolTipTextAt(0, "Text editor for composing RISCV programs.");
-        this.setToolTipTextAt(1, "View and control assembly language program execution.  Enabled upon successful assemble.");
+        this.setToolTipTextAt(1, "View memory and registers of the assembled program.  Switching to this tab re-assembles the current file.");
       
       	/* Listener has one specific purpose: when Execute tab is selected for the 
            * first time, set the bounds of its internal frames by invoking the
@@ -103,6 +108,46 @@ public class MainPane extends JTabbedPane {
                                 executePane.setWindowBounds();
                             }
                             Globals.getGui().getMainPane().removeChangeListener(this);
+                        }
+                    }
+                });
+
+        // The Memory tab shows memory and registers of the assembled program,
+        // so switching to it force-assembles the current file: the view then
+        // always corresponds to the current source text.  While a program is
+        // executing (run session active), the live execution state is shown
+        // instead and no assembly is performed.  If the assembly fails, the
+        // user is returned to the Edit tab (errors are in the Messages pane).
+        this.addChangeListener(
+                new ChangeListener() {
+                    public void stateChanged(ChangeEvent ce) {
+                        JTabbedPane tabbedPane = (JTabbedPane) ce.getSource();
+                        int index = tabbedPane.getSelectedIndex();
+                        Component c = (index >= 0) ? tabbedPane.getComponentAt(index) : null;
+                        if (c != executeTab || assemblingForMemoryView) {
+                            return;
+                        }
+                        if (Simulator.getInstance().isSimulating()
+                                || editTabbedPane.isRunSessionActive()) {
+                            return; // show the live execution state
+                        }
+                        assemblingForMemoryView = true;
+                        try {
+                            Globals.getGui().getRunAssembleAction().actionPerformed(
+                                    new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "MemoryTab"));
+                            if (FileStatus.get() != FileStatus.RUNNABLE) {
+                                // nothing to show (no file open or assembly errors)
+                                setSelectedComponent(editTabbedPane);
+                            } else {
+                                // Re-layout the internal windows so the Text
+                                // Segment window of the freshly assembled
+                                // program is visible and large enough.  Deferred
+                                // until the tab activation layout pass is done,
+                                // so the final desktop size is used.
+                                SwingUtilities.invokeLater(() -> executeTab.relayoutWindows());
+                            }
+                        } finally {
+                            assemblingForMemoryView = false;
                         }
                     }
                 });
