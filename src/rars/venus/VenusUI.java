@@ -183,6 +183,14 @@ public class VenusUI extends JFrame {
         //Insets defaultTabInsets = (Insets)UIManager.get("TabbedPane.tabInsets");
         //UIManager.put("TabbedPane.tabInsets", new Insets(1, 1, 1, 1));
         mainPane = new MainPane(mainUI, editor, registersTab, fpTab, csrTab);
+        // Keep the editors' line number breakpoint markers in sync with the
+        // Bkpt column of the Text Segment window.
+        mainPane.getExecutePane().getTextSegmentWindow().setBreakpointsChangedCallback(() -> {
+            EditTabbedPane tabs = mainPane.getEditTabbedPane();
+            for (int i = 0; i < tabs.getTabCount(); i++) {
+                ((FileViewPane) tabs.getComponentAt(i)).getEditPane().updateBreakpointMarkers();
+            }
+        });
         //UIManager.put("TabbedPane.tabInsets", defaultTabInsets);
 
   

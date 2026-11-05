@@ -140,8 +140,8 @@ public class JEditBasedTextArea extends JEditTextArea implements TextEditingArea
     public void setBackground(Color bg) {
         super.setBackground(bg);
         getPainter().setBackground(bg);
-        lineNumbers.setOpaque(true);
-        lineNumbers.setBackground(bg);
+        // The line numbers margin keeps its own (light gray) background
+        // styled by EditPane, independent of the editor background.
     }
 
     /**

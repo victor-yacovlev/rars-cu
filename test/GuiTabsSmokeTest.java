@@ -68,6 +68,12 @@ public class GuiTabsSmokeTest {
         check("after assemble: menu state RUNNABLE", VenusUI.getMenuState() == FileStatus.RUNNABLE);
         check("after assemble: stays on the Edit sub-tab (assembly is for diagnostics)",
                 tabs.getCurrentFileView().getSelectedIndex() == FileViewPane.EDIT_TAB);
+        // Line numbers margin: always visible, opaque, light-gray background
+        // (the same tone used for the locked editor background), styled with a
+        // vertical separator on the right.
+        javax.swing.JComponent numbers = tabs.getCurrentFileView().getEditPane().getLineNumbersComponent();
+        check("line numbers margin is visible",
+                numbers.isVisible());
         check("after assemble: FileStatus.assembled", FileStatus.isAssembled());
         check("after assemble: per-file assembled", paneB.isAssembled());
 
@@ -208,6 +214,14 @@ public class GuiTabsSmokeTest {
                 () -> VenusUI.getMenuState() == FileStatus.TERMINATED, 10000);
         check("auto-assembly before Go: program ran (exit code 42)",
                 Globals.exitCode == 42);
+        { // margin background matches the locked-editor tone in both states
+            javax.swing.JComponent margin = tabs.getCurrentFileView().getEditPane().getLineNumbersComponent();
+            java.awt.Color marginBg = margin.getBackground();
+            java.awt.Color base = rars.Globals.getSettings().getColorSettingByPosition(rars.Settings.EDITOR_BACKGROUND);
+            java.awt.Color lockedTone = rars.venus.editors.TextEditingArea.readOnlyBackground(base);
+            check("line numbers margin uses the locked-editor background tone",
+                    marginBg.equals(lockedTone));
+        }
 
         // Broken text: the automatic assembly fails, no run happens, and
         // F5/F7 remain available.
@@ -246,12 +260,62 @@ public class GuiTabsSmokeTest {
         }
         onEdt(() -> tabs.getCurrentFileView().showEdit());
 
+        // Breakpoints in the editor line numbers margin, synced with the
+        // Text Segment "Bkpt" column.
+        rars.venus.TextSegmentWindow textSegment = ui.getMainPane().getExecutePane().getTextSegmentWindow();
+        javax.swing.JComponent bpNumbers = tabs.getCurrentFileView().getEditPane().getLineNumbersComponent();
+        int bpLineHeight = bpNumbers.getFontMetrics(bpNumbers.getFont()).getHeight();
+        // click on line 3 (executable "li a7, 93"): sets a breakpoint
+        onEdt(() -> dispatchMarginClick(bpNumbers, 2 * bpLineHeight + bpLineHeight / 2));
+        check("margin click sets breakpoint marker on line 3",
+                tabs.getCurrentFileView().getEditPane().getBreakpointLines().contains(3));
+        check("margin click sets Bkpt in Text Segment",
+                textSegment.getSortedBreakPointsArray() != null
+                        && textSegment.getSortedBreakPointsArray().length >= 1);
+        // click again: clears the breakpoint
+        onEdt(() -> dispatchMarginClick(bpNumbers, 2 * bpLineHeight + bpLineHeight / 2));
+        check("second margin click clears the breakpoint marker",
+                !tabs.getCurrentFileView().getEditPane().getBreakpointLines().contains(3));
+        check("second margin click clears Bkpt in Text Segment",
+                textSegment.getSortedBreakPointsArray() == null
+                        || textSegment.getSortedBreakPointsArray().length == 0);
+        // sync from the table side: set breakpoints via the Text Segment
+        java.util.ArrayList<Integer> addr3 = new java.util.ArrayList<>();
+        for (rars.ProgramStatement st : rars.Globals.program.getMachineList()) {
+            if (fileB.getPath().equals(st.getSourceFile()) && st.getSourceLine() == 3) {
+                addr3.add(st.getAddress());
+            }
+        }
+        int[] addr3arr = addr3.stream().mapToInt(Integer::intValue).toArray();
+        check("file B line 3 is executable", addr3arr.length >= 1);
+        onEdt(() -> textSegment.setBreakpointsAtAddresses(addr3arr, true));
+        check("Bkpt checkbox -> editor marker appears",
+                tabs.getCurrentFileView().getEditPane().getBreakpointLines().contains(3));
+        // click on a non-executable line (line 1 is the ".text" directive): no breakpoint
+        onEdt(() -> dispatchMarginClick(bpNumbers, bpLineHeight / 2));
+        check("margin click on non-executable line does nothing",
+                !tabs.getCurrentFileView().getEditPane().getBreakpointLines().contains(1)
+                        && !tabs.getCurrentFileView().getEditPane().getBreakpointLines().contains(2)
+                        && (textSegment.getSortedBreakPointsArray() == null
+                            || textSegment.getSortedBreakPointsArray().length == addr3arr.length));
+        // clear all: markers disappear
+        onEdt(() -> textSegment.clearAllBreakpoints());
+        check("clear-all breakpoints clears editor markers",
+                tabs.getCurrentFileView().getEditPane().getBreakpointLines().isEmpty());
+
         if (failures == 0) {
             System.out.println("\nGUI smoke test: ALL CHECKS PASSED");
             return 0;
         }
         System.out.println("\nGUI smoke test: " + failures + " CHECK(S) FAILED");
         return 1;
+    }
+
+    // Simulates a mouse click on the line numbers margin at the given y.
+    private static void dispatchMarginClick(javax.swing.JComponent numbers, int y) {
+        numbers.dispatchEvent(new java.awt.event.MouseEvent(numbers,
+                java.awt.event.MouseEvent.MOUSE_CLICKED, System.currentTimeMillis(),
+                0, 5, y, 1, false));
     }
 
     private static File tempFile(String name, String content) throws IOException {

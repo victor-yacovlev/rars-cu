@@ -65,8 +65,10 @@ public class EditPane extends JPanel implements Observer {
     private VenusUI mainUI;
     private String currentDirectoryPath;
     private JLabel caretPositionLabel;
-    private JCheckBox showLineNumbers;
     private JLabel lineNumbers;
+    // Source lines (1-based) of this file that currently have breakpoints set
+    // (kept in sync with the Bkpt column of the Text Segment window).
+    private java.util.Set<Integer> breakpointLines = new java.util.HashSet<>();
     private static int count = 0;
     private boolean isCompoundEdit = false;
     private CompoundEdit compoundEdit;
@@ -93,7 +95,31 @@ public class EditPane extends JPanel implements Observer {
         // We want to be notified of editor font changes! See update() below.
         Globals.getSettings().addObserver(this);
         this.fileStatus = new FileStatus();
-        lineNumbers = new JLabel();
+        // The line numbers margin paints its background, light-red rectangles
+        // under lines with breakpoints, and the numbers (HTML text) on top.
+        lineNumbers = new JLabel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                // margin background
+                g.setColor(getBackground());
+                g.fillRect(0, 0, getWidth(), getHeight());
+                // light-red rectangle under every line with a breakpoint:
+                // full width of the margin, one text line high
+                g.setColor(BREAKPOINT_MARKER_BACKGROUND);
+                int lineHeight = getFontMetrics(getFont()).getHeight();
+                if (lineHeight > 0) {
+                    Rectangle visible = getVisibleRect();
+                    for (int line : breakpointLines) {
+                        int y = (line - 1) * lineHeight;
+                        if (y + lineHeight < visible.y || y > visible.y + visible.height) {
+                            continue;
+                        }
+                        g.fillRect(0, y, getWidth(), lineHeight);
+                    }
+                }
+                super.paintComponent(g); // the numbers text (label is not opaque)
+            }
+        };
 
         if (Globals.getSettings().getBooleanSetting(Settings.Bool.GENERIC_TEXT_EDITOR)) {
             this.sourceCode = new GenericTextArea(this, lineNumbers);
@@ -114,9 +140,7 @@ public class EditPane extends JPanel implements Observer {
                         if (FileStatus.get() == FileStatus.OPENING) {
                             setFileStatus(FileStatus.NOT_EDITED);
                             FileStatus.set(FileStatus.NOT_EDITED);
-                            if (showingLineNumbers()) {
-                                lineNumbers.setText(getLineNumbersList(sourceCode.getDocument()));
-                            }
+                            lineNumbers.setText(getLineNumbersList(sourceCode.getDocument()));
                             return;
                         }
                         // End of 9-Aug-2011 modification.
@@ -161,9 +185,7 @@ public class EditPane extends JPanel implements Observer {
 
                         Globals.getGui().getMainPane().getExecutePane().clearPane(); // DPS 9-Aug-2011
 
-                        if (showingLineNumbers()) {
-                            lineNumbers.setText(getLineNumbersList(sourceCode.getDocument()));
-                        }
+                        lineNumbers.setText(getLineNumbersList(sourceCode.getDocument()));
                     }
 
                     public void removeUpdate(DocumentEvent evt) {
@@ -175,45 +197,55 @@ public class EditPane extends JPanel implements Observer {
                     }
                 });
 
-        showLineNumbers = new JCheckBox("Show Line Numbers");
-        showLineNumbers.setToolTipText("If checked, will display line number for each line of text.");
-        showLineNumbers.setEnabled(false);
-        // Show line numbers by default.
-        showLineNumbers.setSelected(Globals.getSettings().getBooleanSetting(Settings.Bool.EDITOR_LINE_NUMBERS_DISPLAYED));
-
         this.setSourceCode("", false);
 
         lineNumbers.setFont(getLineNumberFont(sourceCode.getFont()));
         lineNumbers.setVerticalAlignment(JLabel.TOP);
         lineNumbers.setText("");
         lineNumbers.setVisible(true);
-
-        // Listener fires when "Show Line Numbers" check box is clicked.
-        showLineNumbers.addItemListener(
-                new ItemListener() {
-                    public void itemStateChanged(ItemEvent e) {
-                        if (showLineNumbers.isSelected()) {
-                            lineNumbers.setText(getLineNumbersList(sourceCode.getDocument()));
-                            lineNumbers.setVisible(true);
-                        } else {
-                            lineNumbers.setText("");
-                            lineNumbers.setVisible(false);
-                        }
-                        sourceCode.revalidate(); // added 16 Jan 2012 to assure label redrawn.
-                        Globals.getSettings().setBooleanSetting(Settings.Bool.EDITOR_LINE_NUMBERS_DISPLAYED, showLineNumbers.isSelected());
-                        // needed because caret disappears when checkbox clicked
-                        sourceCode.setCaretVisible(true);
-                        sourceCode.requestFocusInWindow();
-                    }
-                });
+        applyLineNumbersStyle();
+        // Clicking a line number toggles a breakpoint for that line (if the
+        // line is executable), in sync with the Text Segment Bkpt column.
+        lineNumbers.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                toggleBreakpointAtLineNumber(lineNumberAt(e.getY()));
+            }
+        });
 
         JPanel editInfo = new JPanel(new BorderLayout());
         caretPositionLabel = new JLabel();
         caretPositionLabel.setToolTipText("Tracks the current position of the text editing cursor.");
         displayCaretPosition(new Point());
         editInfo.add(caretPositionLabel, BorderLayout.WEST);
-        editInfo.add(showLineNumbers, BorderLayout.CENTER);
         this.add(editInfo, BorderLayout.SOUTH);
+    }
+
+    /**
+     * Styles the line numbers margin: opaque light-gray background (the same
+     * tone used for the read-only editor state) and a vertical separator line
+     * on the right edge of the numbers block.  Re-applied on settings changes.
+     */
+    // Light-red background of the breakpoint marker rectangle in the margin.
+    private static final Color BREAKPOINT_MARKER_BACKGROUND = new Color(0xF8, 0xC0, 0xC0);
+
+    private void applyLineNumbersStyle() {
+        Color background = Globals.getSettings().getColorSettingByPosition(Settings.EDITOR_BACKGROUND);
+        Color foreground = Globals.getSettings().getColorSettingByPosition(Settings.EDITOR_FOREGROUND);
+        Color separator = UIManager.getColor("Separator.foreground");
+        if (separator == null) {
+            separator = foreground.brighter();
+        }
+        // Not opaque: the margin paints its background and the breakpoint
+        // rectangles itself (see the lineNumbers paintComponent override).
+        lineNumbers.setOpaque(false);
+        lineNumbers.setBackground(rars.venus.editors.TextEditingArea.readOnlyBackground(background));
+        lineNumbers.setForeground(foreground);
+        lineNumbers.setBorder(javax.swing.BorderFactory.createCompoundBorder(
+                javax.swing.BorderFactory.createEmptyBorder(0, 6, 0, 6),
+                javax.swing.BorderFactory.createMatteBorder(0, 0, 0, 1, separator)));
+        lineNumbers.revalidate();
+        lineNumbers.repaint();
     }
 
 
@@ -255,11 +287,10 @@ public class EditPane extends JPanel implements Observer {
         for (int i = 1; i <= lineCount; i++) {
             String lineStr = Integer.toString(i);
             int leadingSpaces = digits - lineStr.length();
-            if (leadingSpaces == 0) {
-                lineNumberList.append(lineStr + "&nbsp;<br>");
-            } else {
-                lineNumberList.append(spaces.substring(0, leadingSpaces * 6) + lineStr + "&nbsp;<br>");
-            }
+            String padded = (leadingSpaces == 0)
+                    ? lineStr + "&nbsp;"
+                    : spaces.substring(0, leadingSpaces * 6) + lineStr + "&nbsp;";
+            lineNumberList.append(padded).append("<br>");
         }
         lineNumberList.append("<br></html>");
         return lineNumberList.toString();
@@ -383,6 +414,104 @@ public class EditPane extends JPanel implements Observer {
      */
     public Component getSourceComponent() {
         return (Component) this.sourceCode;
+    }
+
+    /**
+     * The line numbers margin component (exposed for GUI tests).
+     */
+    public JComponent getLineNumbersComponent() {
+        return lineNumbers;
+    }
+
+    /**
+     * The source lines currently marked with breakpoints in the margin
+     * (exposed for GUI tests; kept in sync with the Text Segment Bkpt column).
+     */
+    public java.util.Set<Integer> getBreakpointLines() {
+        return breakpointLines;
+    }
+
+    /**
+     * Re-derive the set of breakpoint lines of this file from the Bkpt column
+     * of the Text Segment window and refresh the margin markers.
+     */
+    public void updateBreakpointMarkers() {
+        VenusUI gui = Globals.getGui();
+        if (gui == null) {
+            return;
+        }
+        rars.venus.TextSegmentWindow textSegment =
+                gui.getMainPane().getExecutePane().getTextSegmentWindow();
+        breakpointLines = textSegment.getBreakpointSourceLines(getPathname());
+        lineNumbers.setText(getLineNumbersList(sourceCode.getDocument()));
+        lineNumbers.repaint();
+    }
+
+    /**
+     * Map a y-coordinate in the line numbers margin to a source line number
+     * (1-based), clamped to the number of lines in the document.
+     */
+    private int lineNumberAt(int y) {
+        int lineHeight = lineNumbers.getFontMetrics(lineNumbers.getFont()).getHeight();
+        if (lineHeight <= 0) {
+            return -1;
+        }
+        int line = y / lineHeight + 1;
+        int lineCount = getSourceLineCount();
+        return Math.max(1, Math.min(line, lineCount));
+    }
+
+    /**
+     * Toggle a breakpoint for the given source line: all machine instructions
+     * generated by the line are marked (or unmarked) in the Text Segment Bkpt
+     * column.  Only possible in the editor of the currently loaded project
+     * and only for executable lines (lines that generate instructions).
+     */
+    public void toggleBreakpointAtLineNumber(int line) {
+        if (line <= 0) {
+            return;
+        }
+        VenusUI gui = Globals.getGui();
+        if (gui == null) {
+            return;
+        }
+        // Only the program of the currently loaded project can have breakpoints.
+        if (gui.getMainPane().getEditTabbedPane().getLoadedProjectPane() != this) {
+            return;
+        }
+        // Not while a program is executing (the editor is locked anyway).
+        if (rars.simulator.Simulator.getInstance().isSimulating()
+                || gui.getMainPane().getEditTabbedPane().isRunSessionActive()) {
+            return;
+        }
+        if (Globals.program == null) {
+            return;
+        }
+        rars.venus.TextSegmentWindow textSegment =
+                gui.getMainPane().getExecutePane().getTextSegmentWindow();
+        java.util.ArrayList<Integer> addresses = new java.util.ArrayList<>();
+        boolean allSet = true;
+        String path = getPathname();
+        for (rars.ProgramStatement statement : Globals.program.getMachineList()) {
+            if (path != null && path.equals(statement.getSourceFile())
+                    && statement.getSourceLine() == line) {
+                addresses.add(statement.getAddress());
+                if (!textSegment.isBreakpointSetAtAddress(statement.getAddress())) {
+                    allSet = false;
+                }
+            }
+        }
+        if (addresses.isEmpty()) {
+            return; // the line generates no instructions: no breakpoint possible
+        }
+        int[] addressArray = new int[addresses.size()];
+        for (int i = 0; i < addressArray.length; i++) {
+            addressArray[i] = addresses.get(i);
+        }
+        textSegment.setBreakpointsAtAddresses(addressArray, !allSet);
+        // markers refresh via the breakpoints-changed callback; do it directly
+        // as well so the margin is consistent even without a callback wired.
+        updateBreakpointMarkers();
     }
 
     /**
@@ -553,22 +682,9 @@ public class EditPane extends JPanel implements Observer {
     /**
      * get editor's line number display status
      *
-     * @return true if editor is current displaying line numbers, false otherwise.
-     */
-    public boolean showingLineNumbers() {
-        return showLineNumbers.isSelected();
-    }
-
     /**
      * enable or disable checkbox that controls display of line numbers
      *
-     * @param enabled True to enable box, false to disable.
-     */
-    public void setShowLineNumbersEnabled(boolean enabled) {
-        showLineNumbers.setEnabled(enabled);
-        //showLineNumbers.setSelected(false); // set off, whether closing or opening
-    }
-
     /**
      * Update the caret position label on the editor's border to
      * display the current line and column.  The position is given
@@ -760,6 +876,7 @@ public class EditPane extends JPanel implements Observer {
         // pixel height is not the same then the numbers will not line up with
         // the source lines.
         lineNumbers.setFont(getLineNumberFont(sourceCode.getFont()));
+        applyLineNumbersStyle();
         lineNumbers.revalidate();
     }
 

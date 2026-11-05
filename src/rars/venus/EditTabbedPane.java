@@ -409,7 +409,6 @@ public class EditTabbedPane extends JTabbedPane {
     public void newFile() {
         EditPane editPane = new EditPane(this.mainUI);
         editPane.setSourceCode("", true);
-        editPane.setShowLineNumbersEnabled(true);
         editPane.setFileStatus(FileStatus.NEW_NOT_EDITED);
         String name = editor.getNextDefaultFilename();
         editPane.setPathname(name);
@@ -969,7 +968,6 @@ public class EditTabbedPane extends JTabbedPane {
                 // text area contents, that should not be seen as undoable by the Undo
                 // action.  Let's get rid of it.
                 editPane.discardAllUndoableEdits();
-                editPane.setShowLineNumbersEnabled(true);
                 editPane.setFileStatus(FileStatus.NOT_EDITED);
 
                 FileViewPane fileView = new FileViewPane(mainPane, editPane);

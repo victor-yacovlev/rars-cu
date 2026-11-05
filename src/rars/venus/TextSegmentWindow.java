@@ -191,6 +191,8 @@ public class TextSegmentWindow extends JInternalFrame implements Observer {
         if (Globals.getSettings().getBooleanSetting(Settings.Bool.SELF_MODIFYING_CODE_ENABLED)) {
             addAsTextSegmentObserver();
         }
+        // The new table resets all breakpoints: re-sync editor markers.
+        fireBreakpointsChanged();
     }
 
     ////////////  Support for program arguments added DPS 17-July-2008 //////////////
@@ -237,6 +239,76 @@ public class TextSegmentWindow extends JInternalFrame implements Observer {
      */
     public void registerTableModelListener(TableModelListener tml) {
         tableModelListener = tml;
+    }
+
+    private Runnable breakpointsChangedCallback;
+
+    /**
+     * Register a callback invoked whenever breakpoints change: a Bkpt checkbox
+     * is toggled, breakpoints are cleared, or a new table is set up (which
+     * resets breakpoints).  Used to keep the editor's line number markers in
+     * sync with the Bkpt column.
+     */
+    public void setBreakpointsChangedCallback(Runnable callback) {
+        breakpointsChangedCallback = callback;
+    }
+
+    private void fireBreakpointsChanged() {
+        if (breakpointsChangedCallback != null) {
+            breakpointsChangedCallback.run();
+        }
+    }
+
+    /**
+     * Whether a breakpoint is currently set at the given text address.
+     */
+    public boolean isBreakpointSetAtAddress(int address) {
+        if (addressRows == null || data == null) {
+            return false;
+        }
+        Integer row = addressRows.get(address);
+        return row != null && row < data.length && (Boolean) data[row][BREAK_COLUMN];
+    }
+
+    /**
+     * Set or clear breakpoints at the given text addresses, updating the Bkpt
+     * checkboxes in the table and notifying listeners.
+     */
+    public void setBreakpointsAtAddresses(int[] addresses, boolean set) {
+        if (tableModel == null || addressRows == null) {
+            return;
+        }
+        for (int address : addresses) {
+            Integer row = addressRows.get(address);
+            if (row != null && row < data.length) {
+                // must use this method to assure display updated and listener notified
+                tableModel.setValueAt(set, row, BREAK_COLUMN);
+            }
+        }
+    }
+
+    /**
+     * The set of source lines (1-based) of the given source file that
+     * currently have breakpoints set.  Empty set when no program is assembled.
+     *
+     * @param sourceFile full path of the source file
+     */
+    public java.util.Set<Integer> getBreakpointSourceLines(String sourceFile) {
+        java.util.Set<Integer> lines = new java.util.HashSet<>();
+        if (data == null || Globals.program == null) {
+            return lines;
+        }
+        ArrayList<ProgramStatement> statements = Globals.program.getMachineList();
+        int rows = Math.min(data.length, statements.size());
+        for (int i = 0; i < rows; i++) {
+            if ((Boolean) data[i][BREAK_COLUMN]) {
+                ProgramStatement statement = statements.get(i);
+                if (sourceFile != null && sourceFile.equals(statement.getSourceFile())) {
+                    lines.add(statement.getSourceLine());
+                }
+            }
+        }
+        return lines;
     }
 
     /**
@@ -721,6 +793,10 @@ public class TextSegmentWindow extends JInternalFrame implements Observer {
             if (col != CODE_COLUMN) {
                 data[row][col] = value;
                 fireTableCellUpdated(row, col);
+                if (col == BREAK_COLUMN) {
+                    // keep the editor's line number markers in sync
+                    fireBreakpointsChanged();
+                }
                 return;
             }
             // Handle changes in the Code column.
