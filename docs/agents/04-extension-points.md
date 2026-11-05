@@ -73,7 +73,7 @@
 - Номера syscall назначаются только через `Syscall.properties` (не хардкодить в классах — загрузчик завершит JVM при рассинхроне).
 - `NumberDisplayBaseChooser.formatNumber*` — общее форматирование для регистров **и** сегментных окон; менять семантику — только с проверкой всех мест использования.
 - Симуляция всегда в потоке `SimThread` (не SwingWorker, вопреки старым комментариям); обновление Swing — через `invokeLater`.
-- Ресурсы (`*.properties`, `PseudoOps*.txt`, `help/`, `images/`) должны попадать в classpath/JAR рядом с классами — `build-jar.sh` копирует все не-`.java` файлы из `src/`.
+- Ресурсы (`*.properties`, `PseudoOps*.txt`, `help/`, `images/`) должны попадать в classpath/JAR рядом с классами — в gradle-сборке это `sourceSets.main.resources` (`srcDirs = ['src']`, исключения `**/*.java` и `jsoftfloat/**`; см. `build.gradle`).
 
 ## 6. Улучшения UI (реализовано)
 

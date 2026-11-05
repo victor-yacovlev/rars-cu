@@ -29,9 +29,7 @@ rars-cu/
 │   └── images/             # иконки
 ├── test/                   # Test.java (headless-тесты через rars.api) + *.s + riscv-tests/
 ├── docs/agents/            # эта документация
-├── build.gradle, settings.gradle, gradle-build.sh  # основная сборка (gradle)
-├── build-jar.sh            # альтернативная сборка (чистый javac)
-├── test.sh                 # запуск тестов
+├── build.gradle, settings.gradle, gradle-build.sh  # основная сборка (gradle); тесты — `gradle runTests --no-daemon`
 └── FORK-CHANGES.md         # задачи форка (все реализованы)
 ```
 
@@ -48,7 +46,7 @@ java -jar rars-cu-<дата>.jar h # CLI-справка (список опций
 javac -cp build/libs/<jar> test/Test.java && java -cp test:build/libs/<jar> Test   # тесты
 ```
 
-- Сборка — gradle (`build.gradle`, `settings.gradle`); также есть `build-jar.sh` (чистый `javac` → `rars.jar`). Java-версия: код рассчитан на Java 8+ (использует `java.util.Observable`, Swing).
+- Сборка — gradle (`build.gradle`, `settings.gradle`) через скрипт `gradle-build.sh` (продукт — `rars-cu-<дата>.jar` в корне проекта). Целевая Java — 21 (`options.release` в `build.gradle`); код использует `java.util.Observable` и Swing. Валидация изменений — `sh gradle-build.sh`, тесты — `gradle runTests --no-daemon`.
 - Известный сбой тестов: `test/selfmod.s` падает и на оригинальной сборке (не регрессия форка).
 - `test/Test.java` — прогон ассемблерных программ из `test/*.s` через `rars.api.Program` в headless-режиме.
 - `rars/extras/Documentation.java` — отдельный `main()` для генерации markdown-таблиц (директивы, syscall'ы, инструкции); не часть GUI.
