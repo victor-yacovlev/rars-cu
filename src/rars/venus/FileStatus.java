@@ -230,6 +230,11 @@ public class FileStatus {
 
     private int status;
     private File file;
+    /**
+     * Whether this file's project has been successfully assembled
+     * (an assembled program is stored for it).
+     */
+    private boolean assembled;
 
     /**
      * Create a FileStatus object with FileStatis.NO_FILE for status and null for file getters.
@@ -292,6 +297,24 @@ public class FileStatus {
     }
 
     /**
+     * Whether this file's project has been successfully assembled.
+     *
+     * @return true if the file has a successfully assembled program.
+     */
+    public boolean isFileAssembled() {
+        return assembled;
+    }
+
+    /**
+     * Set the assembled flag for this file.
+     *
+     * @param assembled true if the file has a successfully assembled program.
+     */
+    public void setFileAssembled(boolean assembled) {
+        this.assembled = assembled;
+    }
+
+    /**
      * Set full file pathname. See java.io.File(String pathname) for parameter specs.
      *
      * @param newPath the new pathname. If no directory path, getParent() will return null.
@@ -346,7 +369,7 @@ public class FileStatus {
     public void updateStaticFileStatus() {
         systemStatus = this.status;
         systemName = this.file.getPath();
-        systemAssembled = false;
+        systemAssembled = this.assembled;
         systemSaved = (status == NOT_EDITED || status == RUNNABLE || status == RUNNING || status == TERMINATED);
         systemEdited = (status == NEW_EDITED || status == EDITED);
         systemFile = this.file;

@@ -5,6 +5,7 @@ import rars.riscv.hardware.ControlAndStatusRegisterFile;
 import rars.riscv.hardware.FloatingPointRegisterFile;
 import rars.riscv.hardware.Memory;
 import rars.riscv.hardware.RegisterFile;
+import rars.venus.EditPane;
 import rars.venus.ExecutePane;
 import rars.venus.FileStatus;
 import rars.venus.GuiAction;
@@ -87,6 +88,10 @@ public class RunBackstepAction extends GuiAction {
             mainUI.highlightStep(RegisterFile.getProgramCounter());
             mainUI.highlightStepSourceLine(RegisterFile.getProgramCounter());
             FileStatus.set(FileStatus.RUNNABLE);
+            EditPane currentPane = mainUI.getMainPane().getEditPane();
+            if (currentPane != null) {
+                currentPane.setFileStatus(FileStatus.RUNNABLE);
+            }
             // if we've backed all the way, disable the button
             //    if (Globals.program.getBackStepper().empty()) {
             //     ((AbstractAction)((AbstractButton)e.getSource()).getAction()).setEnabled(false);

@@ -409,13 +409,8 @@ public class VenusUI extends JFrame {
                     // RunGoAction's "paused" method will do the cleanup.
                 }
             };
-            runStopAction = new GuiAction("Stop", loadIcon("Stop22.png"),
-                    "Stop the currently running program", KeyEvent.VK_S, KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0)) {
-                public void actionPerformed(ActionEvent e) {
-                    Simulator.getInstance().stopExecution();
-                    // RunGoAction's "stopped" method will take care of the cleanup.
-                }
-            };
+            runStopAction = new RunStopAction("Stop", loadIcon("Stop22.png"),
+                    "Terminate the currently executing program", KeyEvent.VK_S, KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0), mainUI);
             runResetAction = new RunResetAction("Reset", loadIcon("Reset22.png"), "Reset memory and registers",
                     KeyEvent.VK_R, KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), mainUI);
             runClearBreakpointsAction = new RunClearBreakpointsAction("Clear all breakpoints", null,
@@ -831,6 +826,61 @@ public class VenusUI extends JFrame {
                 System.out.println("Invalid File Status: " + status);
                 break;
         }
+        // The menu state methods above do not know about the run session;
+        // recompute the edit-action enablement and the always-available Stop
+        // on top of the new state.
+        updateEditActionsEnabled();
+        updateStopActionEnabled();
+    }
+
+    /**
+     * Recompute the enablement of the text-modifying editor actions (Cut,
+     * Paste, Find/Replace, Undo/Redo) from the current menu state and the run
+     * session: while a program is under execution control, its text is
+     * read-only, so these actions are disabled.  Non-modifying actions
+     * (Copy, Select All) stay available.
+     */
+    public void updateEditActionsEnabled() {
+        if (editCutAction == null || mainPane == null) {
+            return; // actions not created yet (startup)
+        }
+        boolean menuAllows = menuState == FileStatus.NEW_NOT_EDITED
+                || menuState == FileStatus.NEW_EDITED
+                || menuState == FileStatus.NOT_EDITED
+                || menuState == FileStatus.EDITED
+                || menuState == FileStatus.RUNNABLE
+                || menuState == FileStatus.TERMINATED;
+        boolean locked = mainPane.getEditTabbedPane().isRunSessionActive();
+        boolean enabled = menuAllows && !locked;
+        editCutAction.setEnabled(enabled);
+        editPasteAction.setEnabled(enabled);
+        editFindReplaceAction.setEnabled(enabled);
+        updateUndoAndRedoState();
+    }
+
+    /**
+     * Whether the text-modifying editor actions (Cut, Paste, Find/Replace)
+     * are currently enabled.  Used by GUI tests.
+     */
+    public boolean areEditActionsEnabled() {
+        return editCutAction.isEnabled()
+                && editPasteAction.isEnabled()
+                && editFindReplaceAction.isEnabled();
+    }
+
+    /**
+     * Recompute the enablement of the Stop action: Stop must always be
+     * available while a program is executing (a run session is active — Go,
+     * Step, or a paused program), so that execution can be force-terminated
+     * at any moment.  Without an executing program Stop is disabled.
+     */
+    public void updateStopActionEnabled() {
+        if (runStopAction == null || mainPane == null) {
+            return; // actions not created yet (startup)
+        }
+        boolean executing = mainPane.getEditTabbedPane().isRunSessionActive()
+                || Simulator.getInstance().isSimulating();
+        runStopAction.setEnabled(executing);
     }
 
 
@@ -887,11 +937,13 @@ public class VenusUI extends JFrame {
         editSelectAllAction.setEnabled(true);
         settingsMemoryConfigurationAction.setEnabled(true);
         runAssembleAction.setEnabled(true);
+        // Go and Step stay available: pressing them assembles automatically
+        // first (the file may have been edited since the last assembly).
+        runGoAction.setEnabled(true);
+        runStepAction.setEnabled(true);
         // If assemble-all, allow previous Run menu settings to remain.
         // Otherwise, clear them out.  DPS 9-Aug-2011
         if (!Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ALL)) {
-            runGoAction.setEnabled(false);
-            runStepAction.setEnabled(false);
             runBackstepAction.setEnabled(false);
             runResetAction.setEnabled(false);
             runStopAction.setEnabled(false);
@@ -923,8 +975,10 @@ public class VenusUI extends JFrame {
         editSelectAllAction.setEnabled(true);
         settingsMemoryConfigurationAction.setEnabled(true); // added 21 July 2009
         runAssembleAction.setEnabled(true);
-        runGoAction.setEnabled(false);
-        runStepAction.setEnabled(false);
+        // Go and Step stay available while editing: pressing them assembles
+        // automatically first.
+        runGoAction.setEnabled(true);
+        runStepAction.setEnabled(true);
         runBackstepAction.setEnabled(false);
         runResetAction.setEnabled(false);
         runStopAction.setEnabled(false);
@@ -1210,6 +1264,36 @@ public class VenusUI extends JFrame {
     }
 
     /**
+     * Return reference to the Run->Go item's action.  Used by GUI tests to
+     * start execution of the current program.
+     *
+     * @return the Action object for the Run->Go operation.
+     */
+    public Action getRunGoAction() {
+        return runGoAction;
+    }
+
+    /**
+     * Return reference to the Run->Step item's action.  Used by GUI tests to
+     * step the current program.
+     *
+     * @return the Action object for the Run->Step operation.
+     */
+    public Action getRunStepAction() {
+        return runStepAction;
+    }
+
+    /**
+     * Return reference to the Run->Stop item's action.  Used by GUI tests to
+     * force-terminate an executing program.
+     *
+     * @return the Action object for the Run->Stop operation.
+     */
+    public Action getRunStopAction() {
+        return runStopAction;
+    }
+
+    /**
      * Highlights the instruction at the given text segment address in the
      * Execute tab's Text Segment window.
      *
@@ -1278,8 +1362,12 @@ public class VenusUI extends JFrame {
 
     public void updateUndoAndRedoState() {
         EditPane editPane = getMainPane().getEditPane();
-        editUndoAction.setEnabled(editPane != null && editPane.getUndoManager().canUndo());
-        editRedoAction.setEnabled(editPane != null && editPane.getUndoManager().canRedo());
+        // While a program is under execution control (run session active),
+        // undo/redo must not be available: it would change the program text
+        // bypassing the read-only lock.
+        boolean locked = getMainPane().getEditTabbedPane().isRunSessionActive();
+        editUndoAction.setEnabled(!locked && editPane != null && editPane.getUndoManager().canUndo());
+        editRedoAction.setEnabled(!locked && editPane != null && editPane.getUndoManager().canRedo());
     }
 
     private ImageIcon loadIcon(String name) {

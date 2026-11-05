@@ -214,6 +214,66 @@ public class GenericTextArea extends JTextArea implements TextEditingArea {
     }
 
     /**
+     * Reflects the current editability in the component colors: a read-only
+     * text gets a slightly darker (light gray) background.
+     */
+    public void updateEditableAppearance() {
+        this.setBackground(this.isEditable() ? Color.WHITE : TextEditingArea.readOnlyBackground(Color.WHITE));
+    }
+
+    /**
+     * True while the editing area is locked (the file's program is
+     * executing): no caret, no selection, no keyboard cursor movement.
+     */
+    private boolean locked = false;
+
+    /**
+     * Puts the editing area into (or out of) the "locked" state used while
+     * the file's program is executing: the text is read-only, the caret is
+     * hidden and cannot be moved, text cannot be selected and the
+     * current-line highlight is switched off.  Scrolling still works.
+     */
+    public void setLocked(boolean locked) {
+        this.locked = locked;
+        this.setEditable(!locked);
+        this.setFocusable(!locked);
+        this.setLineHighlightEnabled(!locked);
+        if (locked) {
+            // clear selection and hide the caret
+            this.select(0, 0);
+            this.setCaretVisible(false);
+            this.getCaret().setSelectionVisible(false);
+        } else {
+            this.setCaretVisible(true);
+            this.getCaret().setSelectionVisible(true);
+        }
+        this.updateEditableAppearance();
+    }
+
+    // While locked, swallow mouse and key input so that the caret cannot be
+    // moved and no text can be selected (mouse wheel scrolling still works).
+    @Override
+    protected void processMouseEvent(java.awt.event.MouseEvent e) {
+        if (locked) return;
+        super.processMouseEvent(e);
+    }
+
+    @Override
+    protected void processMouseMotionEvent(java.awt.event.MouseEvent e) {
+        if (locked) return;
+        super.processMouseMotionEvent(e);
+    }
+
+    @Override
+    protected void processKeyEvent(java.awt.event.KeyEvent e) {
+        if (locked) {
+            e.consume();
+            return;
+        }
+        super.processKeyEvent(e);
+    }
+
+    /**
      * Tell UndoManager to discard all its collected undoable edits.
      */
     public void discardAllUndoableEdits() {

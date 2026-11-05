@@ -8,6 +8,7 @@ import rars.simulator.ProgramArgumentList;
 import rars.simulator.Simulator;
 import rars.simulator.SimulatorNotice;
 import rars.util.SystemIO;
+import rars.venus.EditPane;
 import rars.venus.ExecutePane;
 import rars.venus.FileStatus;
 import rars.venus.GuiAction;
@@ -57,6 +58,9 @@ public class RunGoAction extends GuiAction {
     private String name;
     private ExecutePane executePane;
     private VenusUI mainUI;
+    // The tab of the program being run by this action.  Its per-file status
+    // is updated when the run pauses or finishes.
+    private EditPane runningPane;
 
     public RunGoAction(String name, Icon icon, String descrip,
                        Integer mnemonic, KeyStroke accel, VenusUI gui) {
@@ -70,58 +74,77 @@ public class RunGoAction extends GuiAction {
     public void actionPerformed(ActionEvent e) {
         name = this.getValue(Action.NAME).toString();
         executePane = mainUI.getMainPane().getExecutePane();
-        if (FileStatus.isAssembled()) {
-            if (FileStatus.get() == FileStatus.TERMINATED) {
-                // The program previously ran to completion; reset the state so
-                // the next run starts from the beginning.
-                if (!RunResetAction.performReset(mainUI)) {
-                    return; // reset failed, do not run
-                }
+        EditPane currentPane = mainUI.getMainPane().getEditPane();
+        // Defensive: make sure the shared simulator state holds the current
+        // file's program (it normally always does once its tab is selected).
+        if (currentPane != null && currentPane.getAssembledProgram() != null
+                && Globals.program != currentPane.getAssembledProgram()) {
+            mainUI.getMainPane().getEditTabbedPane().activateProject(currentPane);
+        }
+        // If the current file has not been assembled yet (never assembled, or
+        // edited since the last assembly), assemble it automatically first.
+        // F5/F7 are available while editing and start with an assembly; if it
+        // fails, the errors are already reported and the run is skipped.
+        if (!FileStatus.isAssembled()
+                || FileStatus.get() == FileStatus.EDITED
+                || FileStatus.get() == FileStatus.NOT_EDITED) {
+            mainUI.getRunAssembleAction().actionPerformed(e);
+            if (!FileStatus.isAssembled()) {
+                return; // assembly failed
             }
-            if (!mainUI.getStarted()) {
-                processProgramArgumentsIfAny();  // DPS 17-July-2008
-                if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {
-                    return; // user cancelled the function-arguments dialog
-                }
+        }
+        if (FileStatus.get() == FileStatus.TERMINATED) {
+            // The program previously ran to completion; reset the state so
+            // the next run starts from the beginning.
+            if (!RunResetAction.performReset(mainUI)) {
+                return; // reset failed, do not run
             }
-            if (mainUI.getReset() || mainUI.getStarted()) {
+        }
+        if (!mainUI.getStarted()) {
+            processProgramArgumentsIfAny();  // DPS 17-July-2008
+            if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {
+                return; // user cancelled the function-arguments dialog
+            }
+        }
+        if (mainUI.getReset() || mainUI.getStarted()) {
 
-                mainUI.setStarted(true);  // added 8/27/05
+            mainUI.setStarted(true);  // added 8/27/05
+            runningPane = currentPane;
+            // While the program is executing (until it terminates or is
+            // stopped; a pause keeps the session), its source text is
+            // read-only and no other tab can be selected.
+            mainUI.getMainPane().getEditTabbedPane().beginRunSession(currentPane);
 
-                mainUI.getMessagesPane().postMessage(
-                        name + ": running " + FileStatus.getFile().getName() + "\n\n");
-                mainUI.getMessagesPane().selectRunMessageTab();
-                executePane.getTextSegmentWindow().setCodeHighlighting(false);
-                executePane.getTextSegmentWindow().unhighlightAllSteps();
-                //FileStatus.set(FileStatus.RUNNING);
-                mainUI.setMenuState(FileStatus.RUNNING);
+            mainUI.getMessagesPane().postMessage(
+                    name + ": running " + FileStatus.getFile().getName() + "\n\n");
+            mainUI.getMessagesPane().selectRunMessageTab();
+            executePane.getTextSegmentWindow().setCodeHighlighting(false);
+            executePane.getTextSegmentWindow().unhighlightAllSteps();
+            //FileStatus.set(FileStatus.RUNNING);
+            mainUI.setMenuState(FileStatus.RUNNING);
 
-                // Setup cleanup procedures for the simulation
-                final Observer stopListener =
-                        new Observer() {
-                            public void update(Observable o, Object simulator) {
-                                SimulatorNotice notice = ((SimulatorNotice) simulator);
-                                if (notice.getAction() != SimulatorNotice.SIMULATOR_STOP) return;
-                                Simulator.Reason reason = notice.getReason();
-                                if (reason == Simulator.Reason.PAUSE || reason == Simulator.Reason.BREAKPOINT) {
-                                    EventQueue.invokeLater(()->paused(notice.getDone(), reason, notice.getException()));
-                                } else {
-                                    EventQueue.invokeLater(()->stopped(notice.getException(), reason));
-                                }
-                                o.deleteObserver(this);
+            // Setup cleanup procedures for the simulation
+            final Observer stopListener =
+                    new Observer() {
+                        public void update(Observable o, Object simulator) {
+                            SimulatorNotice notice = ((SimulatorNotice) simulator);
+                            if (notice.getAction() != SimulatorNotice.SIMULATOR_STOP) return;
+                            Simulator.Reason reason = notice.getReason();
+                            if (reason == Simulator.Reason.PAUSE || reason == Simulator.Reason.BREAKPOINT) {
+                                EventQueue.invokeLater(()->paused(notice.getDone(), reason, notice.getException()));
+                            } else {
+                                EventQueue.invokeLater(()->stopped(notice.getException(), reason));
                             }
-                        };
-                Simulator.getInstance().addObserver(stopListener);
+                            o.deleteObserver(this);
+                        }
+                    };
+            Simulator.getInstance().addObserver(stopListener);
 
-                int[] breakPoints = executePane.getTextSegmentWindow().getSortedBreakPointsArray();
-                Globals.program.startSimulation(maxSteps, breakPoints);
-            } else {
-                // This should never occur because at termination the Go and Step buttons are disabled.
-                JOptionPane.showMessageDialog(mainUI, "reset " + mainUI.getReset() + " started " + mainUI.getStarted());//"You must reset before you can execute the program again.");
-            }
+            int[] breakPoints = executePane.getTextSegmentWindow().getSortedBreakPointsArray();
+            Globals.program.startSimulation(maxSteps, breakPoints);
         } else {
-            // note: this should never occur since "Go" is only enabled after successful assembly.
-            JOptionPane.showMessageDialog(mainUI, "The program must be assembled before it can be run.");
+            // This should never occur because at termination the Go and Step buttons are disabled.
+            JOptionPane.showMessageDialog(mainUI, "reset " + mainUI.getReset() + " started " + mainUI.getStarted());//"You must reset before you can execute the program again.");
         }
     }
 
@@ -154,6 +177,9 @@ public class RunGoAction extends GuiAction {
         executePane.getControlAndStatusWindow().updateRegisters();
         executePane.getDataSegmentWindow().updateValues();
         FileStatus.set(FileStatus.RUNNABLE);
+        if (runningPane != null) {
+            runningPane.setFileStatus(FileStatus.RUNNABLE);
+        }
         mainUI.setReset(false);
     }
 
@@ -171,6 +197,11 @@ public class RunGoAction extends GuiAction {
         executePane.getControlAndStatusWindow().updateRegisters();
         executePane.getDataSegmentWindow().updateValues();
         FileStatus.set(FileStatus.TERMINATED);
+        if (runningPane != null) {
+            runningPane.setFileStatus(FileStatus.TERMINATED);
+        }
+        // Execution has finished: unlock editing and tab switching.
+        mainUI.getMainPane().getEditTabbedPane().endRunSession();
         // Execution has finished; no "next line" to highlight in the editor.
         mainUI.clearHighlightedLines();
         SystemIO.resetFiles(); // close any files opened in MIPS program

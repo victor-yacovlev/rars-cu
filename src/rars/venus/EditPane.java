@@ -1,6 +1,7 @@
 package rars.venus;
 
 import rars.Globals;
+import rars.RISCVprogram;
 import rars.Settings;
 import rars.venus.editors.TextEditingArea;
 import rars.venus.editors.generic.GenericTextArea;
@@ -17,6 +18,7 @@ import java.awt.event.ItemListener;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.Observable;
 import java.util.Observer;
 
@@ -69,6 +71,14 @@ public class EditPane extends JPanel implements Observer {
     private boolean isCompoundEdit = false;
     private CompoundEdit compoundEdit;
     private FileStatus fileStatus;
+    // Per-file project state: the program assembled from this file, together
+    // with the inputs needed to re-assemble it (used to restore the project
+    // when the tab is re-activated, and by Reset).  Each open file is treated
+    // as an independent project.
+    private RISCVprogram assembledProgram;
+    private ArrayList<RISCVprogram> assembledProgramList;
+    private boolean extendedAssemblerEnabled;
+    private boolean warningsAreErrors;
 
     /**
      * Constructor for the EditPane class.
@@ -115,6 +125,22 @@ public class EditPane extends JPanel implements Observer {
                         }
                         if (getFileStatus() == FileStatus.NOT_EDITED) {
                             setFileStatus(FileStatus.EDITED);
+                        }
+                        // Editing a file invalidates its assembled program: the
+                        // file has to be assembled again before it can be run.
+                        if (getFileStatus() == FileStatus.RUNNABLE || getFileStatus() == FileStatus.TERMINATED) {
+                            setFileStatus(FileStatus.EDITED);
+                            clearAssemblyState();
+                            // keep the static (legacy) flag in sync with this pane
+                            FileStatus.setAssembled(false);
+                            // Normally impossible while a run session is active (the
+                            // text is read-only), but if a change slipped through,
+                            // abandon the run session cleanly instead of leaving
+                            // the program mid-run without execution controls.
+                            EditTabbedPane editTabbedPane = mainUI.getMainPane().getEditTabbedPane();
+                            if (editTabbedPane.getRunSessionPane() == EditPane.this) {
+                                editTabbedPane.endRunSession();
+                            }
                         }
                         if (getFileStatus() == FileStatus.NEW_EDITED) {
                             mainUI.getEditor().setTitle("", getFilename(), getFileStatus());
@@ -291,6 +317,107 @@ public class EditPane extends JPanel implements Observer {
 
     public int getFileStatus() {
         return this.fileStatus.getFileStatus();
+    }
+
+    /**
+     * Whether this file's project has been successfully assembled.
+     *
+     * @return true if an assembled program is stored for this file.
+     */
+    public boolean isAssembled() {
+        return this.fileStatus.isFileAssembled();
+    }
+
+    /**
+     * Store the assembly result for this file's project.  Called after a
+     * successful assembly so the project can be restored later (e.g. when
+     * switching back to this tab) without losing the ability to run it.
+     *
+     * @param program                  the assembled program ( Globals.program )
+     * @param programList              the list of assembled source units
+     * @param extendedAssemblerEnabled extended-assembler setting used for assembly
+     * @param warningsAreErrors        warnings-as-errors setting used for assembly
+     */
+    public void setAssemblyState(RISCVprogram program, ArrayList<RISCVprogram> programList,
+                                 boolean extendedAssemblerEnabled, boolean warningsAreErrors) {
+        this.assembledProgram = program;
+        this.assembledProgramList = programList;
+        this.extendedAssemblerEnabled = extendedAssemblerEnabled;
+        this.warningsAreErrors = warningsAreErrors;
+        this.fileStatus.setFileAssembled(program != null);
+    }
+
+    /**
+     * Discard the assembled program of this file's project (after editing the
+     * file, or when restoring the project fails).
+     */
+    public void clearAssemblyState() {
+        setAssemblyState(null, null, false, false);
+    }
+
+    /**
+     * Whether the source text can currently be edited.  It cannot be edited
+     * while the file's program is executing.
+     */
+    public boolean isSourceEditable() {
+        return this.sourceCode.isEditable();
+    }
+
+    /**
+     * Enable or disable editing of the source text.  Used to prevent edits
+     * while the file's program is executing.  A locked text is read-only and
+     * visually marked: slightly darker background, no caret, no selection,
+     * no current-line highlight.
+     *
+     * @param editable true to allow editing, false to lock the text.
+     */
+    public void setSourceEditable(boolean editable) {
+        if (editable == isSourceEditable()) {
+            return; // no change; do not disturb the current state
+        }
+        this.sourceCode.setLocked(!editable);
+    }
+
+    /**
+     * The AWT component of the source editing area (exposed for GUI tests).
+     */
+    public Component getSourceComponent() {
+        return (Component) this.sourceCode;
+    }
+
+    /**
+     * The current background color of the source editing area.
+     */
+    public Color getSourceBackground() {
+        return this.sourceCode.getBackground();
+    }
+
+    /**
+     * The program assembled from this file, or null if it has none.
+     */
+    public RISCVprogram getAssembledProgram() {
+        return assembledProgram;
+    }
+
+    /**
+     * The list of assembled source units of this file's project, or null.
+     */
+    public ArrayList<RISCVprogram> getAssembledProgramList() {
+        return assembledProgramList;
+    }
+
+    /**
+     * Extended-assembler option that was in effect when this project was assembled.
+     */
+    public boolean getExtendedAssemblerEnabled() {
+        return extendedAssemblerEnabled;
+    }
+
+    /**
+     * Warnings-as-errors option that was in effect when this project was assembled.
+     */
+    public boolean getWarningsAreErrors() {
+        return warningsAreErrors;
     }
 
     /**

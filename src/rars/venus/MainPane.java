@@ -123,7 +123,7 @@ public class MainPane extends JTabbedPane {
      *
      * @return the editor tabbed pane
      */
-    public JComponent getEditTabbedPane() {
+    public EditTabbedPane getEditTabbedPane() {
         return editTabbedPane;
     }
 

@@ -190,6 +190,18 @@ public class Simulator extends Observable {
     }
 
     /**
+     * Whether a simulated execution is currently in progress.  Used by the
+     * GUI to enforce that only one program may execute at a time: while a
+     * program is executing, the project it belongs to must stay active.
+     *
+     * @return true if a simulation thread is currently executing.
+     */
+    public boolean isSimulating() {
+        SimThread thread = simulatorThread;
+        return thread != null && thread.isSimulating();
+    }
+
+    /**
      * Perform the simulated execution. It is "interrupted" when main thread sets
      * the "stop" variable to true. The variable is tested before the next instruction
      * is simulated.  Thus interruption occurs in a tightly controlled fashion.
@@ -202,6 +214,9 @@ public class Simulator extends Observable {
         private SimulationException pe;
         private volatile boolean stop = false;
         private Reason constructReturnReason;
+        // Set as soon as the thread is created (so a start cannot race with a
+        // tab switch) and cleared when run() finishes.
+        private volatile boolean simulating = true;
 
         /**
          * SimThread constructor.  Receives all the information it needs to simulate execution.
@@ -334,6 +349,19 @@ public class Simulator extends Observable {
          */
 
         public void run() {
+            simulating = true;
+            try {
+                runSimulation();
+            } finally {
+                simulating = false;
+            }
+        }
+
+        boolean isSimulating() {
+            return simulating;
+        }
+
+        private void runSimulation() {
             // The next two statements are necessary for GUI to be consistently updated
             // before the simulation gets underway.  Without them, this happens only intermittently,
             // with a consequence that some simulations are interruptable using PAUSE/STOP and others

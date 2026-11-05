@@ -144,6 +144,66 @@ public class JEditBasedTextArea extends JEditTextArea implements TextEditingArea
         lineNumbers.setBackground(bg);
     }
 
+    /**
+     * Reflects the current editability in the component colors: a read-only
+     * text gets a slightly darker background and foreground.
+     */
+    public void updateEditableAppearance() {
+        updateEditorColors();
+    }
+
+    /**
+     * True while the editing area is locked (the file's program is
+     * executing): no caret, no selection, no keyboard cursor movement.
+     */
+    private boolean locked = false;
+
+    /**
+     * Puts the editing area into (or out of) the "locked" state used while
+     * the file's program is executing: the text is read-only, the caret is
+     * hidden and cannot be moved, text cannot be selected and the
+     * current-line highlight is switched off.  Scrolling still works.  On
+     * unlocking, the line-highlight setting is restored from settings.
+     */
+    public void setLocked(boolean locked) {
+        this.locked = locked;
+        this.setEditable(!locked);
+        this.setFocusable(!locked);
+        this.setLineHighlightEnabled(locked ? false
+                : Globals.getSettings().getBooleanSetting(Settings.Bool.EDITOR_CURRENT_LINE_HIGHLIGHTING));
+        if (locked) {
+            // clear selection and hide the caret
+            this.select(0, 0);
+            this.setCaretVisible(false);
+        } else {
+            this.setCaretVisible(true);
+        }
+        this.updateEditableAppearance();
+    }
+
+    // While locked, swallow mouse and key input so that the caret cannot be
+    // moved and no text can be selected (mouse wheel scrolling still works).
+    @Override
+    protected void processMouseEvent(java.awt.event.MouseEvent e) {
+        if (locked) return;
+        super.processMouseEvent(e);
+    }
+
+    @Override
+    protected void processMouseMotionEvent(java.awt.event.MouseEvent e) {
+        if (locked) return;
+        super.processMouseMotionEvent(e);
+    }
+
+    @Override
+    public void processKeyEvent(java.awt.event.KeyEvent e) {
+        if (locked) {
+            e.consume();
+            return;
+        }
+        super.processKeyEvent(e);
+    }
+
     @Override
     public void setForeground(Color fg) {
         super.setForeground(fg);
@@ -160,7 +220,7 @@ public class JEditBasedTextArea extends JEditTextArea implements TextEditingArea
         Settings settings = Globals.getSettings();
         Color background = settings.getColorSettingByPosition(Settings.EDITOR_BACKGROUND);
         Color foreground = settings.getColorSettingByPosition(Settings.EDITOR_FOREGROUND);
-        this.setBackground((editable) ? background : background.darker());
+        this.setBackground((editable) ? background : TextEditingArea.readOnlyBackground(background));
         this.getPainter().setLineHighlightColor(settings.getColorSettingByPosition(Settings.EDITOR_LINE_HIGHLIGHT));
         this.getPainter().setSelectionColor(settings.getColorSettingByPosition(Settings.EDITOR_SELECTION_COLOR));
         this.getPainter().setCaretColor(settings.getColorSettingByPosition(Settings.EDITOR_CARET_COLOR));

@@ -81,6 +81,43 @@ public interface TextEditingArea {
 
     public void setEditable(boolean editable);
 
+    /**
+     * Whether the text can currently be edited (see setEditable).
+     */
+    public boolean isEditable();
+
+    /**
+     * Updates the component's colors to reflect the current editability
+     * (see setEditable): a read-only text gets a slightly darker background.
+     */
+    public void updateEditableAppearance();
+
+    /**
+     * Puts the editing area into (or out of) the "locked" state used while
+     * the file's program is executing: the text is read-only, the caret is
+     * hidden and cannot be moved, text cannot be selected and the
+     * current-line highlight is switched off.  Scrolling (wheel, scrollbars)
+     * still works.  Equivalent to setEditable plus the interaction locks.
+     */
+    public void setLocked(boolean locked);
+
+    /**
+     * The background tint used for a read-only text (program under execution
+     * control): a light gray that differs only slightly from the normal
+     * background (white becomes #F2F2F2).
+     */
+    public static Color readOnlyBackground(Color base) {
+        return new Color(
+                (int) (base.getRed() * 0.95),
+                (int) (base.getGreen() * 0.95),
+                (int) (base.getBlue() * 0.95));
+    }
+
+    /**
+     * Returns the current background color of the editing area.
+     */
+    public Color getBackground();
+
     public void setSelectionEnd(int pos);
 
     public void setSelectionStart(int pos);

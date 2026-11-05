@@ -76,6 +76,11 @@ public class RunAssembleAction extends GuiAction {
         MessagesPane messagesPane = mainUI.getMessagesPane();
         ExecutePane executePane = mainUI.getMainPane().getExecutePane();
         RegistersPane registersPane = mainUI.getRegistersPane();
+        EditPane currentPane = mainUI.getMainPane().getEditPane();
+        // Assembling always abandons any execution in progress (registers,
+        // memory and the started/reset flags are reinitialized below), so the
+        // run session of the current program — if any — ends here.
+        mainUI.getMainPane().getEditTabbedPane().endRunSession();
         extendedAssemblerEnabled = Globals.getSettings().getBooleanSetting(Settings.Bool.EXTENDED_ASSEMBLER_ENABLED);
         warningsAreErrors = Globals.getSettings().getBooleanSetting(Settings.Bool.WARNINGS_ARE_ERRORS);
         if (FileStatus.getFile() != null) {
@@ -120,6 +125,17 @@ public class RunAssembleAction extends GuiAction {
                 FileStatus.setAssembled(true);
                 FileStatus.set(FileStatus.RUNNABLE);
 
+                // Every open file is an independent project: remember the
+                // assembly result for this file so its project can be
+                // restored (and run) independently when its tab is re-selected.
+                if (currentPane != null
+                        && !Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ALL)) {
+                    currentPane.setAssemblyState(Globals.program, programsToAssemble,
+                            extendedAssemblerEnabled, warningsAreErrors);
+                    currentPane.setFileStatus(FileStatus.RUNNABLE);
+                    mainUI.getMainPane().getEditTabbedPane().projectLoaded(currentPane);
+                }
+
                 RegisterFile.resetRegisters();
                 FloatingPointRegisterFile.resetRegisters();
                 ControlAndStatusRegisterFile.resetRegisters();
@@ -139,7 +155,10 @@ public class RunAssembleAction extends GuiAction {
                 registersPane.getControlAndStatusWindow().clearWindow();
                 mainUI.setReset(true);
                 mainUI.setStarted(false);
-                mainUI.getMainPane().setSelectedComponent(executePane);
+                // Stay on the Edit tab: the purpose of assembling is to get
+                // diagnostics about errors in the program, so the user remains
+                // in the editor (errors/warnings are shown in the Messages
+                // pane).  The Execute tab can be opened manually.
 
                 // Aug. 24, 2005 Ken Vollmar
                 SystemIO.resetFiles();  // Ensure that I/O "file descriptors" are initialized for a new program run
@@ -171,6 +190,10 @@ public class RunAssembleAction extends GuiAction {
                 }
                 FileStatus.setAssembled(false);
                 FileStatus.set(FileStatus.NOT_EDITED);
+                if (currentPane != null) {
+                    currentPane.clearAssemblyState();
+                    currentPane.setFileStatus(FileStatus.NOT_EDITED);
+                }
             }
         }
     }

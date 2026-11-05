@@ -64,3 +64,13 @@ tasks.register('runTests', JavaExec) {
     mainClass = 'Test'
     workingDir = layout.projectDirectory
 }
+
+// Opens a window briefly: exercises per-file projects in the GUI
+// (assembling/running files in separate tabs, tab switching while running).
+tasks.register('runGuiSmokeTest', JavaExec) {
+    group = 'verification'
+    dependsOn compileTestJava
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'GuiTabsSmokeTest'
+    workingDir = layout.projectDirectory
+}

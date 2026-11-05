@@ -7,6 +7,7 @@ import rars.riscv.hardware.RegisterFile;
 import rars.simulator.ProgramArgumentList;
 import rars.simulator.Simulator;
 import rars.simulator.SimulatorNotice;
+import rars.venus.EditPane;
 import rars.venus.ExecutePane;
 import rars.venus.FileStatus;
 import rars.venus.GuiAction;
@@ -54,6 +55,9 @@ public class RunStepAction extends GuiAction {
     private String name;
     private ExecutePane executePane;
     private VenusUI mainUI;
+    // The tab of the program being stepped by this action.  Its per-file
+    // status is updated when the step completes.
+    private EditPane steppingPane;
 
     public RunStepAction(String name, Icon icon, String descrip,
                          Integer mnemonic, KeyStroke accel, VenusUI gui) {
@@ -67,50 +71,69 @@ public class RunStepAction extends GuiAction {
     public void actionPerformed(ActionEvent e) {
         name = this.getValue(Action.NAME).toString();
         executePane = mainUI.getMainPane().getExecutePane();
-        if (FileStatus.isAssembled()) {
-            if (FileStatus.get() == FileStatus.TERMINATED) {
-                // The program previously ran to completion; reset the state so
-                // the next step starts from the beginning.
-                if (!RunResetAction.performReset(mainUI)) {
-                    return; // reset failed, do not step
-                }
-            }
-            mainUI.getMessagesPane().selectRunMessageTab();
-            executePane.getTextSegmentWindow().setCodeHighlighting(true);
-
-            if (!mainUI.getStarted()) {  // DPS 17-July-2008
-                processProgramArgumentsIfAny();
-                if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {
-                    return; // user cancelled the function-arguments dialog
-                }
-                // Program not started yet: the first F7 press enters the
-                // "Prepare" state.  Arguments are set up above and the first
-                // line to be executed is highlighted, but no instruction is
-                // executed yet.  The next F7 press performs the first step.
-                mainUI.setStarted(true);
-                mainUI.highlightStepSourceLine(RegisterFile.getProgramCounter());
-                return;
-            }
-
-            mainUI.setStarted(true);
-
-            // Setup callback for after step finishes
-            final Observer stopListener =
-                    new Observer() {
-                        public void update(Observable o, Object simulator) {
-                            SimulatorNotice notice = ((SimulatorNotice) simulator);
-                            if (notice.getAction() != SimulatorNotice.SIMULATOR_STOP) return;
-                            EventQueue.invokeLater(() -> stepped(notice.getDone(), notice.getReason(), notice.getException()));
-                            o.deleteObserver(this);
-                        }
-                    };
-            Simulator.getInstance().addObserver(stopListener);
-
-            Globals.program.startSimulation(1, null);
-        } else {
-            // note: this should never occur since "Step" is only enabled after successful assembly.
-            JOptionPane.showMessageDialog(mainUI, "The program must be assembled before it can be run.");
+        EditPane currentPane = mainUI.getMainPane().getEditPane();
+        // Defensive: make sure the shared simulator state holds the current
+        // file's program (it normally always does once its tab is selected).
+        if (currentPane != null && currentPane.getAssembledProgram() != null
+                && Globals.program != currentPane.getAssembledProgram()) {
+            mainUI.getMainPane().getEditTabbedPane().activateProject(currentPane);
         }
+        steppingPane = currentPane;
+        // If the current file has not been assembled yet (never assembled, or
+        // edited since the last assembly), assemble it automatically first.
+        // F5/F7 are available while editing and start with an assembly; if it
+        // fails, the errors are already reported and stepping is skipped.
+        if (!FileStatus.isAssembled()
+                || FileStatus.get() == FileStatus.EDITED
+                || FileStatus.get() == FileStatus.NOT_EDITED) {
+            mainUI.getRunAssembleAction().actionPerformed(e);
+            if (!FileStatus.isAssembled()) {
+                return; // assembly failed
+            }
+        }
+        if (FileStatus.get() == FileStatus.TERMINATED) {
+            // The program previously ran to completion; reset the state so
+            // the next step starts from the beginning.
+            if (!RunResetAction.performReset(mainUI)) {
+                return; // reset failed, do not step
+            }
+        }
+        mainUI.getMessagesPane().selectRunMessageTab();
+        executePane.getTextSegmentWindow().setCodeHighlighting(true);
+
+        if (!mainUI.getStarted()) {  // DPS 17-July-2008
+            processProgramArgumentsIfAny();
+            if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {
+                return; // user cancelled the function-arguments dialog
+            }
+            // Program not started yet: the first F7 press enters the
+            // "Prepare" state.  Arguments are set up above and the first
+            // line to be executed is highlighted, but no instruction is
+            // executed yet.  The next F7 press performs the first step.
+            mainUI.setStarted(true);
+            // From the first F7 press on, the program is under execution
+            // control: block editing of its text and tab switching.
+            mainUI.getMainPane().getEditTabbedPane().beginRunSession(currentPane);
+            mainUI.highlightStepSourceLine(RegisterFile.getProgramCounter());
+            return;
+        }
+
+        mainUI.setStarted(true);
+        mainUI.getMainPane().getEditTabbedPane().beginRunSession(currentPane); // no-op if already active
+
+        // Setup callback for after step finishes
+        final Observer stopListener =
+                new Observer() {
+                    public void update(Observable o, Object simulator) {
+                        SimulatorNotice notice = ((SimulatorNotice) simulator);
+                        if (notice.getAction() != SimulatorNotice.SIMULATOR_STOP) return;
+                        EventQueue.invokeLater(() -> stepped(notice.getDone(), notice.getReason(), notice.getException()));
+                        o.deleteObserver(this);
+                    }
+                };
+        Simulator.getInstance().addObserver(stopListener);
+
+        Globals.program.startSimulation(1, null);
     }
 
     // When step is completed, control returns here (from execution thread, indirectly)
@@ -124,12 +147,21 @@ public class RunStepAction extends GuiAction {
             mainUI.highlightStep(RegisterFile.getProgramCounter());
             mainUI.highlightStepSourceLine(RegisterFile.getProgramCounter());
             FileStatus.set(FileStatus.RUNNABLE);
+            if (steppingPane != null) {
+                steppingPane.setFileStatus(FileStatus.RUNNABLE);
+            }
         }
         if (done) {
             RunGoAction.resetMaxSteps();
             executePane.getTextSegmentWindow().unhighlightAllSteps();
             mainUI.clearHighlightedLines();
             FileStatus.set(FileStatus.TERMINATED);
+            if (steppingPane != null) {
+                steppingPane.setFileStatus(FileStatus.TERMINATED);
+            }
+            // If this finished a run that was paused mid-run, unlock editing
+            // and tab switching.
+            mainUI.getMainPane().getEditTabbedPane().endRunSession();
         }
         if (done && pe == null) {
             if (reason == Simulator.Reason.NORMAL_TERMINATION) {
@@ -152,6 +184,10 @@ public class RunStepAction extends GuiAction {
                     "\n" + name + ": execution terminated with errors.\n\n");
             mainUI.getRegistersPane().setSelectedComponent(executePane.getControlAndStatusWindow());
             FileStatus.set(FileStatus.TERMINATED); // should be redundant.
+            if (steppingPane != null) {
+                steppingPane.setFileStatus(FileStatus.TERMINATED);
+            }
+            mainUI.getMainPane().getEditTabbedPane().endRunSession();
             executePane.getTextSegmentWindow().setCodeHighlighting(true);
             executePane.getTextSegmentWindow().unhighlightAllSteps();
             mainUI.highlightStep(RegisterFile.getProgramCounter() - 4);

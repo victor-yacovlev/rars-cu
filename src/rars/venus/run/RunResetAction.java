@@ -2,8 +2,10 @@ package rars.venus.run;
 
 import rars.AssemblyException;
 import rars.Globals;
+import rars.RISCVprogram;
 import rars.riscv.hardware.*;
 import rars.util.SystemIO;
+import rars.venus.EditPane;
 import rars.venus.ExecutePane;
 import rars.venus.FileStatus;
 import rars.venus.GuiAction;
@@ -11,6 +13,7 @@ import rars.venus.VenusUI;
 
 import javax.swing.*;
 import java.awt.event.ActionEvent;
+import java.util.ArrayList;
 
 	/*
 Copyright (c) 2003-2009,  Pete Sanderson and Kenneth Vollmar
@@ -68,6 +71,7 @@ public class RunResetAction extends GuiAction {
      * registers, control state and I/O to their initial values.  This is
      * used by the Reset action and is also invoked automatically before
      * starting a run when the program had previously run to completion.
+     * The program of the current file's project is re-assembled.
      *
      * @param mainUI the main GUI
      * @return true if the reset completed successfully, false if the
@@ -76,6 +80,21 @@ public class RunResetAction extends GuiAction {
     public static boolean performReset(VenusUI mainUI) {
         RunGoAction.resetMaxSteps();
         ExecutePane executePane = mainUI.getMainPane().getExecutePane();
+        EditPane currentPane = mainUI.getMainPane().getEditPane();
+        RISCVprogram program = (currentPane != null) ? currentPane.getAssembledProgram() : null;
+        if (program == null) {
+            program = Globals.program;
+        }
+        ArrayList<RISCVprogram> programList = (currentPane != null) ? currentPane.getAssembledProgramList() : null;
+        if (programList == null) {
+            programList = RunAssembleAction.getProgramsToAssemble();
+        }
+        boolean extended = (currentPane != null && currentPane.getAssembledProgram() != null)
+                ? currentPane.getExtendedAssemblerEnabled()
+                : RunAssembleAction.getExtendedAssemblerEnabled();
+        boolean warnings = (currentPane != null && currentPane.getAssembledProgram() != null)
+                ? currentPane.getWarningsAreErrors()
+                : RunAssembleAction.getWarningsAreErrors();
         // The difficult part here is resetting the data segment.  Two approaches are:
         // 1. After each assembly, get a deep copy of the Globals.memory array
         //    containing data segment.  Then replace it upon reset.
@@ -85,9 +104,8 @@ public class RunResetAction extends GuiAction {
         // I am choosing the second approach although it will slow down the reset
         // operation.  The first approach requires additional Memory class methods.
         try {
-            Globals.program.assemble(RunAssembleAction.getProgramsToAssemble(),
-                    RunAssembleAction.getExtendedAssemblerEnabled(),
-                    RunAssembleAction.getWarningsAreErrors());
+            Globals.program = program;
+            program.assemble(programList, extended, warnings);
         } catch (AssemblyException pe) {
             // Should not be possible
             mainUI.getMessagesPane().postMessage(
@@ -116,8 +134,13 @@ public class RunResetAction extends GuiAction {
         mainUI.clearHighlightedLines();
         mainUI.getRegistersPane().setSelectedComponent(executePane.getRegistersWindow());
         FileStatus.set(FileStatus.RUNNABLE);
+        if (currentPane != null && currentPane.getAssembledProgram() != null) {
+            currentPane.setFileStatus(FileStatus.RUNNABLE);
+        }
         mainUI.setReset(true);
         mainUI.setStarted(false);
+        // Reset abandons any paused run: unlock editing and tab switching.
+        mainUI.getMainPane().getEditTabbedPane().endRunSession();
 
         // Aug. 24, 2005 Ken Vollmar
         SystemIO.resetFiles();  // Ensure that I/O "file descriptors" are initialized for a new program run

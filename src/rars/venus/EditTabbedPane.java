@@ -4,8 +4,14 @@ import rars.AssemblyException;
 import rars.Globals;
 import rars.RISCVprogram;
 import rars.Settings;
+import rars.riscv.hardware.ControlAndStatusRegisterFile;
+import rars.riscv.hardware.FloatingPointRegisterFile;
+import rars.riscv.hardware.InterruptController;
+import rars.riscv.hardware.Memory;
 import rars.riscv.hardware.RegisterFile;
+import rars.simulator.Simulator;
 import rars.util.FilenameFinder;
+import rars.util.SystemIO;
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
@@ -60,6 +66,21 @@ public class EditTabbedPane extends JTabbedPane {
     private VenusUI mainUI;
     private Editor editor;
     private FileOpener fileOpener;
+    // Every open file is treated as an independent project.  Since memory,
+    // registers and the Execute pane are shared, only one project at a time
+    // can occupy them: the one belonging to the currently selected tab.
+    // loadedProjectPane is the tab whose assembled program is currently
+    // loaded, or null if none is.  Switching tabs activates (restores) the
+    // project of the newly selected tab.
+    private EditPane loadedProjectPane;
+    // While closing all tabs, project activation on selection changes is
+    // pointless (everything is being closed), so it is suppressed.
+    private boolean suppressProjectActivation = false;
+    // The tab of the program whose run session is active: from the moment Go
+    // is pressed until the program terminates or is stopped (a pause does
+    // not end the session).  While the session is active, the program's text
+    // cannot be edited and other tabs cannot be selected.
+    private EditPane runSessionPane;
 
     /**
      * Constructor for the EditTabbedPane class.
@@ -76,19 +97,225 @@ public class EditTabbedPane extends JTabbedPane {
                 new ChangeListener() {
                     public void stateChanged(ChangeEvent e) {
                         EditPane editPane = (EditPane) getSelectedComponent();
-                        if (editPane != null) {
-                            // New IF statement to permit free traversal of edit panes w/o invalidating
-                            // assembly if assemble-all is selected.  DPS 9-Aug-2011
-                            if (Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ALL)) {
-                                EditTabbedPane.this.updateTitles(editPane);
-                            } else {
-                                EditTabbedPane.this.updateTitlesAndMenuState(editPane);
-                                EditTabbedPane.this.mainPane.getExecutePane().clearPane();
-                            }
-                            editPane.tellEditingComponentToRequestFocusInWindow();
+                        if (editPane == null) {
+                            return;
                         }
+                        // Only one program may execute at a time, and the running
+                        // program occupies the shared simulator state.  While its
+                        // run session is active (executing or paused mid-run), the
+                        // user cannot leave its tab: revert the selection (the
+                        // nested stateChanged then returns below).  A session-less
+                        // simulation thread (single Step) is guarded the same way.
+                        EditPane anchorPane = runSessionPane;
+                        if (anchorPane == null && Simulator.getInstance().isSimulating()) {
+                            anchorPane = loadedProjectPane;
+                        }
+                        if (anchorPane != null) {
+                            if (editPane != anchorPane) {
+                                if (!suppressProjectActivation && indexOfComponent(anchorPane) >= 0) {
+                                    setSelectedComponent(anchorPane);
+                                } else {
+                                    // Cannot revert (e.g. the tab is being closed);
+                                    // keep the menu in run state.
+                                    updateTitles(editPane);
+                                    editPane.tellEditingComponentToRequestFocusInWindow();
+                                }
+                            }
+                            return;
+                        }
+                        if (suppressProjectActivation) {
+                            return;
+                        }
+                        // Permit free traversal of edit panes w/o invalidating
+                        // assembly if assemble-all is selected.  DPS 9-Aug-2011
+                        if (Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ALL)) {
+                            updateTitles(editPane);
+                        } else {
+                            // Each open file is an independent project: switching
+                            // tabs activates that file's project.
+                            EditTabbedPane.this.activateProject(editPane);
+                        }
+                        editPane.tellEditingComponentToRequestFocusInWindow();
                     }
                 });
+    }
+
+    /**
+     * Mark the given tab's project as the one currently loaded in the shared
+     * simulator state (memory, registers, Execute pane).  Called after a
+     * successful assembly and after a project has been restored.
+     *
+     * @param editPane the tab whose assembled program is now loaded.
+     */
+    public void projectLoaded(EditPane editPane) {
+        this.loadedProjectPane = editPane;
+    }
+
+    /**
+     * The tab whose assembled project is currently loaded in the shared
+     * simulator state, or null if no project is loaded.
+     */
+    public EditPane getLoadedProjectPane() {
+        return loadedProjectPane;
+    }
+
+    /**
+     * Start a run session for the given tab's program: from now until
+     * endRunSession() the program's source text is read-only and no other
+     * tab can be selected.  Called when Go starts the program.
+     *
+     * @param editPane the tab whose program starts executing.
+     */
+    public void beginRunSession(EditPane editPane) {
+        this.runSessionPane = editPane;
+        if (editPane != null) {
+            editPane.setSourceEditable(false);
+        }
+        updateTabAppearance();
+        mainUI.updateEditActionsEnabled();
+        mainUI.updateStopActionEnabled();
+    }
+
+    /**
+     * End the active run session (if any): the program's source text becomes
+     * editable again and other tabs can be selected.  Called when the program
+     * terminates or is stopped, and on Reset.
+     */
+    public void endRunSession() {
+        if (runSessionPane != null) {
+            EditPane pane = runSessionPane;
+            runSessionPane = null;
+            if (indexOfComponent(pane) >= 0) {
+                pane.setSourceEditable(true);
+            }
+            updateTabAppearance();
+            mainUI.updateEditActionsEnabled();
+            mainUI.updateStopActionEnabled();
+        }
+    }
+
+    /**
+     * Whether a run session is currently active (a program is executing or
+     * paused mid-run).
+     */
+    public boolean isRunSessionActive() {
+        return runSessionPane != null;
+    }
+
+    /**
+     * The tab whose program has an active run session, or null if none.
+     */
+    public EditPane getRunSessionPane() {
+        return runSessionPane;
+    }
+
+    /*
+     * Visualizes tab availability: while a run session is active, all tabs
+     * except the running program's tab are disabled (grayed out, clicks on
+     * them do not change the selection).  Without a session all tabs are
+     * enabled.
+     */
+    private void updateTabAppearance() {
+        Color normal = UIManager.getColor("TabbedPane.foreground");
+        Color disabled = UIManager.getColor("TabbedPane.disabledForeground");
+        if (normal == null) normal = getForeground();
+        if (disabled == null) disabled = normal.darker();
+        for (int i = 0; i < getTabCount(); i++) {
+            EditPane pane = (EditPane) getComponentAt(i);
+            boolean unavailable = runSessionPane != null && pane != runSessionPane;
+            setEnabledAt(i, !unavailable);
+            // Some look-and-feels also respect the per-tab foreground color.
+            setForegroundAt(i, unavailable ? disabled : normal);
+        }
+    }
+
+    /**
+     * A newly added tab must immediately show its correct (possibly disabled,
+     * while a run session is active) appearance.
+     */
+    @Override
+    public void insertTab(String title, Icon icon, Component component, String tip, int index) {
+        super.insertTab(title, icon, component, tip, index);
+        updateTabAppearance();
+    }
+
+    /**
+     * Activate the project of the given tab: restore its assembled program
+     * (if it has one and it is not already loaded) and update the menu state
+     * from the tab's own status.  For a tab without an assembled program the
+     * Execute pane is cleared.  A restored project starts from a fresh state
+     * (registers and memory reinitialized by re-assembly), because the shared
+     * simulator state may have been used by another project meanwhile.
+     *
+     * @param editPane the tab to activate.
+     */
+    public void activateProject(EditPane editPane) {
+        ExecutePane executePane = mainPane.getExecutePane();
+        if (editPane.getAssembledProgram() == null) {
+            if (loadedProjectPane != null) {
+                executePane.clearPane();
+                loadedProjectPane = null;
+            }
+        } else if (loadedProjectPane != editPane) {
+            if (reloadProject(editPane)) {
+                loadedProjectPane = editPane;
+            } else {
+                executePane.clearPane();
+                loadedProjectPane = null;
+            }
+        }
+        updateTitlesAndMenuState(editPane);
+    }
+
+    /*
+     * Re-assemble the given tab's stored program and reinitialize the shared
+     * simulator state and Execute pane for it.  Essentially the same work a
+     * successful Run->Assemble does, minus the source reading (the stored
+     * program units are re-used).  Returns true on success; on failure the
+     * tab's stored program is discarded and false is returned.
+     */
+    private boolean reloadProject(EditPane editPane) {
+        ExecutePane executePane = mainPane.getExecutePane();
+        RISCVprogram program = editPane.getAssembledProgram();
+        try {
+            // Give the project a clean memory: it may contain leftovers of a
+            // previously loaded project.  Re-assembly then rebuilds the
+            // segments of this one.
+            Memory.getInstance().clear();
+            program.assemble(editPane.getAssembledProgramList(),
+                    editPane.getExtendedAssemblerEnabled(),
+                    editPane.getWarningsAreErrors());
+        } catch (AssemblyException pe) {
+            mainUI.getMessagesPane().postMessage(
+                    "Unable to restore assembled program of " + editPane.getFilename()
+                            + ".  Please assemble it again.\n\n");
+            editPane.clearAssemblyState();
+            editPane.setFileStatus(FileStatus.NOT_EDITED);
+            return false;
+        }
+        Globals.program = program;
+        RegisterFile.resetRegisters();
+        FloatingPointRegisterFile.resetRegisters();
+        ControlAndStatusRegisterFile.resetRegisters();
+        InterruptController.reset();
+        rars.simulator.FunctionRun.clear();
+
+        executePane.getTextSegmentWindow().setupTable();
+        executePane.getDataSegmentWindow().setupTable();
+        executePane.getDataSegmentWindow().highlightCellForAddress(Memory.dataBaseAddress);
+        executePane.getDataSegmentWindow().clearHighlighting();
+        executePane.getLabelsWindow().setupTable();
+        executePane.getTextSegmentWindow().setCodeHighlighting(true);
+        mainUI.highlightStep(RegisterFile.getProgramCounter());
+        mainUI.clearHighlightedLines();
+        mainUI.getRegistersPane().getRegistersWindow().clearWindow();
+        mainUI.getRegistersPane().getFloatingPointWindow().clearWindow();
+        mainUI.getRegistersPane().getControlAndStatusWindow().clearWindow();
+        mainUI.setReset(true);
+        mainUI.setStarted(false);
+        editPane.setFileStatus(FileStatus.RUNNABLE);
+        SystemIO.resetFiles();  // Ensure that I/O "file descriptors" are initialized for a new program run
+        return true;
     }
 
     /**
@@ -227,38 +454,46 @@ public class EditTabbedPane extends JTabbedPane {
                     unsavedChanges = true;
                 }
             }
-            if (unsavedChanges) {
-                switch (confirm("one or more files")) {
-                    case JOptionPane.YES_OPTION:
-                        boolean removedAll = true;
-                        for (int i = 0; i < tabCount; i++) {
-                            if (tabs[i].hasUnsavedEdits()) {
-                                setSelectedComponent(tabs[i]);
-                                boolean saved = saveCurrentFile();
-                                if (saved) {
-                                    this.remove(tabs[i]);
+            // Suppress tab-selection side effects (project activation, run
+            // session locking) while the tabs are being removed.
+            boolean wasSuppressed = suppressProjectActivation;
+            suppressProjectActivation = true;
+            try {
+                if (unsavedChanges) {
+                    switch (confirm("one or more files")) {
+                        case JOptionPane.YES_OPTION:
+                            boolean removedAll = true;
+                            for (int i = 0; i < tabCount; i++) {
+                                if (tabs[i].hasUnsavedEdits()) {
+                                    setSelectedComponent(tabs[i]);
+                                    boolean saved = saveCurrentFile();
+                                    if (saved) {
+                                        this.remove(tabs[i], false);
+                                    } else {
+                                        removedAll = false;
+                                    }
                                 } else {
-                                    removedAll = false;
+                                    this.remove(tabs[i], false);
                                 }
-                            } else {
-                                this.remove(tabs[i]);
                             }
-                        }
-                        return removedAll;
-                    case JOptionPane.NO_OPTION:
-                        for (int i = 0; i < tabCount; i++) {
-                            this.remove(tabs[i]);
-                        }
-                        return true;
-                    case JOptionPane.CANCEL_OPTION:
-                        return false;
-                    default: // should never occur
-                        return false;
+                            return removedAll;
+                        case JOptionPane.NO_OPTION:
+                            for (int i = 0; i < tabCount; i++) {
+                                this.remove(tabs[i], false);
+                            }
+                            return true;
+                        case JOptionPane.CANCEL_OPTION:
+                            return false;
+                        default: // should never occur
+                            return false;
+                    }
+                } else {
+                    for (int i = 0; i < tabCount; i++) {
+                        this.remove(tabs[i], false);
+                    }
                 }
-            } else {
-                for (int i = 0; i < tabCount; i++) {
-                    this.remove(tabs[i]);
-                }
+            } finally {
+                suppressProjectActivation = wasSuppressed;
             }
         }
         return result;
@@ -449,22 +684,52 @@ public class EditTabbedPane extends JTabbedPane {
         return tabs;
     }
     /**
-     * Remove the pane and update menu status
+     * Remove the pane and update menu status.  The project of the tab that
+     * becomes current is activated.
      */
     public void remove(EditPane editPane) {
-        super.remove(editPane);
+        remove(editPane, true);
+    }
+
+    /**
+     * Remove the pane and update menu status.
+     *
+     * @param activateSuccessor true to activate the project of the tab that
+     *                          becomes current (used when a single tab is
+     *                          closed); false to only refresh titles/menu.
+     */
+    private void remove(EditPane editPane, boolean activateSuccessor) {
+        // If the closed tab's project occupies the simulator, it is gone now.
+        if (loadedProjectPane == editPane) {
+            loadedProjectPane = null;
+        }
+        // If the closed tab's program had an active run session, the session
+        // ends with the tab (nothing to unlock — the tab is being closed).
+        if (runSessionPane == editPane) {
+            runSessionPane = null;
+        }
+        boolean wasSuppressed = suppressProjectActivation;
+        suppressProjectActivation = true;
+        try {
+            super.remove(editPane);
+        } finally {
+            suppressProjectActivation = wasSuppressed;
+        }
         editPane = getCurrentEditTab(); // is now next tab or null
         if (editPane == null) {
             FileStatus.set(FileStatus.NO_FILE);
             this.editor.setTitle("", "", FileStatus.NO_FILE);
             Globals.getGui().setMenuState(FileStatus.NO_FILE);
+        } else if (activateSuccessor) {
+            setCurrentEditTab(editPane);
+            activateProject(editPane);
         } else {
-            FileStatus.set(editPane.getFileStatus());
             updateTitlesAndMenuState(editPane);
         }
         // When last file is closed, menu is unable to respond to mnemonics
         // and accelerators.  Let's have it request focus so it may do so.
         if (getTabCount() == 0) mainUI.haveMenuRequestFocus();
+        updateTabAppearance();
     }
 
 
