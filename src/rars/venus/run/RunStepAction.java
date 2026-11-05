@@ -68,6 +68,13 @@ public class RunStepAction extends GuiAction {
         name = this.getValue(Action.NAME).toString();
         executePane = mainUI.getMainPane().getExecutePane();
         if (FileStatus.isAssembled()) {
+            if (FileStatus.get() == FileStatus.TERMINATED) {
+                // The program previously ran to completion; reset the state so
+                // the next step starts from the beginning.
+                if (!RunResetAction.performReset(mainUI)) {
+                    return; // reset failed, do not step
+                }
+            }
             if (!mainUI.getStarted()) {  // DPS 17-July-2008
                 processProgramArgumentsIfAny();
                 if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {

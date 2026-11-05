@@ -71,6 +71,13 @@ public class RunGoAction extends GuiAction {
         name = this.getValue(Action.NAME).toString();
         executePane = mainUI.getMainPane().getExecutePane();
         if (FileStatus.isAssembled()) {
+            if (FileStatus.get() == FileStatus.TERMINATED) {
+                // The program previously ran to completion; reset the state so
+                // the next run starts from the beginning.
+                if (!RunResetAction.performReset(mainUI)) {
+                    return; // reset failed, do not run
+                }
+            }
             if (!mainUI.getStarted()) {
                 processProgramArgumentsIfAny();  // DPS 17-July-2008
                 if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {

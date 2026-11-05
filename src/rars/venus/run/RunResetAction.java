@@ -56,8 +56,25 @@ public class RunResetAction extends GuiAction {
      * reset GUI components and MIPS resources
      */
     public void actionPerformed(ActionEvent e) {
-        RunGoAction.resetMaxSteps();
         String name = this.getValue(Action.NAME).toString();
+        if (performReset(mainUI)) {
+            mainUI.getMessagesPane().postRunMessage(
+                    "\n" + name + ": reset completed.\n\n");
+        }
+    }
+
+    /**
+     * Performs the actual reset: re-assembles the program and resets all
+     * registers, control state and I/O to their initial values.  This is
+     * used by the Reset action and is also invoked automatically before
+     * starting a run when the program had previously run to completion.
+     *
+     * @param mainUI the main GUI
+     * @return true if the reset completed successfully, false if the
+     *         re-assembly failed (in which case state is left unchanged)
+     */
+    public static boolean performReset(VenusUI mainUI) {
+        RunGoAction.resetMaxSteps();
         ExecutePane executePane = mainUI.getMainPane().getExecutePane();
         // The difficult part here is resetting the data segment.  Two approaches are:
         // 1. After each assembly, get a deep copy of the Globals.memory array
@@ -76,7 +93,7 @@ public class RunResetAction extends GuiAction {
             mainUI.getMessagesPane().postMessage(
                     //pe.errors().generateErrorReport());
                     "Unable to reset.  Please close file then re-open and re-assemble.\n");
-            return;
+            return false;
         }
 
         RegisterFile.resetRegisters();
@@ -104,7 +121,6 @@ public class RunResetAction extends GuiAction {
         // Aug. 24, 2005 Ken Vollmar
         SystemIO.resetFiles();  // Ensure that I/O "file descriptors" are initialized for a new program run
 
-        mainUI.getMessagesPane().postRunMessage(
-                "\n" + name + ": reset completed.\n\n");
+        return true;
     }
 }

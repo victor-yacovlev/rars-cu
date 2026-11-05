@@ -1052,8 +1052,11 @@ public class VenusUI extends JFrame {
         editSelectAllAction.setEnabled(true);
         settingsMemoryConfigurationAction.setEnabled(true); // added 21 July 2009
         runAssembleAction.setEnabled(true);
-        runGoAction.setEnabled(false);
-        runStepAction.setEnabled(false);
+        // After the program runs to completion, Step and Go remain available
+        // so the program can be run again (a reset is performed automatically
+        // before the next run).
+        runGoAction.setEnabled(true);
+        runStepAction.setEnabled(true);
         runBackstepAction.setEnabled(
                 Globals.getSettings().getBackSteppingEnabled() && !Globals.program.getBackStepper().empty());
         runResetAction.setEnabled(true);
