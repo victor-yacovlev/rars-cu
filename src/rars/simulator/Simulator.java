@@ -437,6 +437,17 @@ public class Simulator extends Observable {
                     }
 
                     // always handle interrupts and traps before quiting
+                    // Function-run mode: if the program counter reached the sentinel
+                    // return address planted in ra (the invoked function returned via
+                    // "ret"), treat it as normal termination.  This is checked before the
+                    // step limit so that executing the final "ret" finishes the program
+                    // with a single step.
+                    pc = RegisterFile.getProgramCounter();
+                    if (FunctionRun.active && pc == FunctionRun.returnAddress) {
+                        stopExecution(true, Reason.NORMAL_TERMINATION);
+                        return;
+                    }
+
                     // Check number of instructions executed.  Return if at limit (-1 is no limit).
                     if (maxSteps > 0) {
                         steps++;
@@ -444,14 +455,6 @@ public class Simulator extends Observable {
                             stopExecution(false, Reason.MAX_STEPS);
                             return;
                         }
-                    }
-
-                    pc = RegisterFile.getProgramCounter();
-                    if (FunctionRun.active && pc == FunctionRun.returnAddress) {
-                        // Function-run mode: the invoked function returned to the sentinel
-                        // address planted in ra. Treat as normal termination.
-                        stopExecution(true, Reason.NORMAL_TERMINATION);
-                        return;
                     }
                     RegisterFile.incrementPC();
                     // Get instuction

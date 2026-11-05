@@ -112,7 +112,8 @@ public class RunResetAction extends GuiAction {
         executePane.getDataSegmentWindow().clearHighlighting();
         executePane.getTextSegmentWindow().resetModifiedSourceCode();
         executePane.getTextSegmentWindow().setCodeHighlighting(true);
-        executePane.getTextSegmentWindow().highlightStepAtPC();
+        mainUI.highlightStep(RegisterFile.getProgramCounter());
+        mainUI.clearHighlightedLines();
         mainUI.getRegistersPane().setSelectedComponent(executePane.getRegistersWindow());
         FileStatus.set(FileStatus.RUNNABLE);
         mainUI.setReset(true);

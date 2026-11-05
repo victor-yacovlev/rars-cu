@@ -2,7 +2,7 @@
 
 ## Назначение
 
-RARS (RISC-V Assembler and Runtime Simulator) — учебный эмулятор ассемблера RISC-V, GUI на Java Swing. Данный репозиторий (`rars-cu`) — форк [thethirdone/rars](https://github.com/thethirdone/rars) (в свою очередь, форк MARS) для курса АКОС в ЦУ. Все три задачи форка из `FORK-CHANGES.md` реализованы: запуск первой функции с аргументами при отсутствии `main`/`_start`, комментарии `//` и отображение регистров в signed/unsigned/hex (устройство — в [04-extension-points.md](04-extension-points.md)).
+RARS (RISC-V Assembler and Runtime Simulator) — учебный эмулятор ассемблера RISC-V, GUI на Java Swing. Данный репозиторий (`rars-cu`) — форк [thethirdone/rars](https://github.com/thethirdone/rars) (в свою очередь, форк MARS) для курса АКОС в ЦУ. Все задачи форка из `FORK-CHANGES.md` реализованы: функциональные — запуск первой функции с аргументами при отсутствии `main`/`_start`, комментарии `//` и отображение регистров в signed/unsigned/hex (разделы 1–3 в [04-extension-points.md](04-extension-points.md)); плюс улучшения UI (раздел 6 там же).
 
 ## Структура каталогов
 

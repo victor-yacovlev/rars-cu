@@ -75,15 +75,24 @@ public class RunStepAction extends GuiAction {
                     return; // reset failed, do not step
                 }
             }
+            mainUI.getMessagesPane().selectRunMessageTab();
+            executePane.getTextSegmentWindow().setCodeHighlighting(true);
+
             if (!mainUI.getStarted()) {  // DPS 17-July-2008
                 processProgramArgumentsIfAny();
                 if (!FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)) {
                     return; // user cancelled the function-arguments dialog
                 }
+                // Program not started yet: the first F7 press enters the
+                // "Prepare" state.  Arguments are set up above and the first
+                // line to be executed is highlighted, but no instruction is
+                // executed yet.  The next F7 press performs the first step.
+                mainUI.setStarted(true);
+                mainUI.highlightStepSourceLine(RegisterFile.getProgramCounter());
+                return;
             }
+
             mainUI.setStarted(true);
-            mainUI.getMessagesPane().selectRunMessageTab();
-            executePane.getTextSegmentWindow().setCodeHighlighting(true);
 
             // Setup callback for after step finishes
             final Observer stopListener =
@@ -112,12 +121,14 @@ public class RunStepAction extends GuiAction {
         executePane.getControlAndStatusWindow().updateRegisters();
         executePane.getDataSegmentWindow().updateValues();
         if (!done) {
-            executePane.getTextSegmentWindow().highlightStepAtPC();
+            mainUI.highlightStep(RegisterFile.getProgramCounter());
+            mainUI.highlightStepSourceLine(RegisterFile.getProgramCounter());
             FileStatus.set(FileStatus.RUNNABLE);
         }
         if (done) {
             RunGoAction.resetMaxSteps();
             executePane.getTextSegmentWindow().unhighlightAllSteps();
+            mainUI.clearHighlightedLines();
             FileStatus.set(FileStatus.TERMINATED);
         }
         if (done && pe == null) {
@@ -143,7 +154,8 @@ public class RunStepAction extends GuiAction {
             FileStatus.set(FileStatus.TERMINATED); // should be redundant.
             executePane.getTextSegmentWindow().setCodeHighlighting(true);
             executePane.getTextSegmentWindow().unhighlightAllSteps();
-            executePane.getTextSegmentWindow().highlightStepAtAddress(RegisterFile.getProgramCounter() - 4);
+            mainUI.highlightStep(RegisterFile.getProgramCounter() - 4);
+            mainUI.clearHighlightedLines();
         }
         mainUI.setReset(false);
     }

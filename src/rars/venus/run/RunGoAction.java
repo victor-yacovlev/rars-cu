@@ -147,7 +147,8 @@ public class RunGoAction extends GuiAction {
         }
         mainUI.getMessagesPane().selectMessageTab();
         executePane.getTextSegmentWindow().setCodeHighlighting(true);
-        executePane.getTextSegmentWindow().highlightStepAtPC();
+        mainUI.highlightStep(RegisterFile.getProgramCounter());
+        mainUI.highlightStepSourceLine(RegisterFile.getProgramCounter());
         executePane.getRegistersWindow().updateRegisters();
         executePane.getFloatingPointWindow().updateRegisters();
         executePane.getControlAndStatusWindow().updateRegisters();
@@ -170,13 +171,15 @@ public class RunGoAction extends GuiAction {
         executePane.getControlAndStatusWindow().updateRegisters();
         executePane.getDataSegmentWindow().updateValues();
         FileStatus.set(FileStatus.TERMINATED);
+        // Execution has finished; no "next line" to highlight in the editor.
+        mainUI.clearHighlightedLines();
         SystemIO.resetFiles(); // close any files opened in MIPS program
         // Bring CSRs to the front if terminated due to exception.
         if (pe != null) {
             mainUI.getRegistersPane().setSelectedComponent(executePane.getControlAndStatusWindow());
             executePane.getTextSegmentWindow().setCodeHighlighting(true);
             executePane.getTextSegmentWindow().unhighlightAllSteps();
-            executePane.getTextSegmentWindow().highlightStepAtAddress(RegisterFile.getProgramCounter() - 4);
+            mainUI.highlightStep(RegisterFile.getProgramCounter() - 4);
         }
         switch (reason) {
             case NORMAL_TERMINATION:

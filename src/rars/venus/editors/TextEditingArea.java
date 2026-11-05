@@ -117,6 +117,15 @@ public interface TextEditingArea {
 
     public void setLineHighlightEnabled(boolean highlight);
 
+    /**
+     * Highlights (as a background drawn under the text, not a selection) the
+     * given source line.  Lines are numbered starting with 1.  A value of 0
+     * or less clears any previously set highlight.
+     *
+     * @param line The line to highlight, or 0/negative to clear.
+     */
+    public void setHighlightedLine(int line);
+
     public void setCaretBlinkRate(int rate);
 
     public void setTabSize(int chars);

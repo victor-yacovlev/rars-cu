@@ -514,6 +514,19 @@ public class EditPane extends JPanel implements Observer {
     }
 
     /**
+     * Highlights the specified editor text line as a full-width background
+     * drawn under the text, as a distinct UI element from the text selection.
+     * Lines are numbered starting with 1, consistent with line numbers
+     * displayed by the editor.  A value of 0 or less clears the highlight.
+     *
+     * @param line The desired line number of this TextPane's text.  Numbering
+     *             starts at 1.
+     */
+    public void setHighlightedLine(int line) {
+        sourceCode.setHighlightedLine(line);
+    }
+
+    /**
      * Select the specified editor text line.  Lines are numbered starting with 1, consistent
      * with line numbers displayed by the editor.
      *

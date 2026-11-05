@@ -17,7 +17,7 @@ VenusUI (JFrame)
  │   ├─ RegistersWindow (int + pc)
  │   ├─ FloatingPointWindow
  │   └─ ControlAndStatusWindow
- ├─ MessagesPane (JTabbedPane: "Messages" | "Run I/O")
+ ├─ MessagesPane (горизонтальный JSplitPane: слева "Messages", справа "Run I/O")
  └─ JSplitPane (splitter / horizonSplitter)
 ```
 
@@ -27,12 +27,13 @@ VenusUI (JFrame)
 | `MainPane.java` | JTabbedPane «Edit»/«Execute» |
 | `EditPane.java` | Один открытый файл: обёртка над `TextEditingArea`, номера строк, undo/compound-edit |
 | `EditTabbedPane.java` | Вкладки открытых файлов (создаёт `EditPane`) |
-| `Editor.java` | Менеджер файлов: Open/Save-каталоги, делегирует `EditTabbedPane` |
+| `Editor.java` | Менеджер файлов: Open/Save-каталоги (персистятся через `FileDirectoryPersistence`), делегирует `EditTabbedPane` |
+| `FileDirectoryPersistence.java` | Хранение каталогов диалогов Open/Save в `java.util.prefs` (записываются при выборе файла, восстанавливаются при создании `Editor`) |
 | `ExecutePane.java` | Окно выполнения: `TextSegmentWindow`, `DataSegmentWindow`, `LabelsWindow` + два `NumberDisplayBaseChooser` (hex/dec для адресов и значений) |
 | `TextSegmentWindow.java` | Таблица сегмента `.text`: дизассемблер, брейкпоинты (чекбоксы), подсветка текущей инструкции; также хранит аргументы программы (`getProgramArguments()`) |
 | `DataSegmentWindow.java` | Таблица памяти сегмента данных, редактирование значений |
 | `LabelsWindow.java` | Таблица символов (метки) |
-| `MessagesPane.java` | «Messages» (вывод ассемблера) / «Run I/O» (syscall-ввод/вывод) |
+| `MessagesPane.java` | «Messages» (вывод ассемблера) и «Run I/O» (syscall-ввод/вывод) рядом слева направо (горизонтальный `JSplitPane`); кнопка «Clear» вынесена в контекстное меню каждой области |
 | `FileStatus.java` | Статусная машина файла: `EDITING/EDITED/RUNNABLE/RUNNING/TERMINATED/NOT_OPEN` |
 | `GuiAction.java` | Базовый `AbstractAction` для пунктов меню |
 | `NumberDisplayBaseChooser.java` | JCheckBox hex/dec + статические форматтеры `formatNumber`/`formatUnsignedInteger` (переиспользуются сегментными окнами) |
@@ -44,6 +45,7 @@ VenusUI (JFrame)
 - Интерфейс `TextEditingArea.java`; реализации выбираются в конструкторе `EditPane` (L88–92) по `Settings.Bool.GENERIC_TEXT_EDITOR`:
   - `generic/GenericTextArea.java` — `JTextArea` без подсветки;
   - `jeditsyntax/JEditBasedTextArea.java` — на базе `JEditTextArea`: `setTokenMarker(new RISCVTokenMarker())`, шрифт из `Settings.getEditorFont()`, undo через `UndoManager`.
+- **Подсветка строки выполнения** — `TextEditingArea.setHighlightedLine(int line)` (1-based; `<=0` снимает) рисует полноширинную фоновую заливку **под** текстом (отдельная UI-операция, не выделение текста). `GenericTextArea` — через `Highlighter` (кастомный `FullLineHighlightPainter`); `JEditBasedTextArea` — через `TextAreaPainter.setExecutionLine(int)` (0-based). `EditPane.setHighlightedLine(int)` делегирует в активный редактор.
 - Порт jEdit Syntax: `jeditsyntax/` — `JEditTextArea`, `TextAreaPainter`, `SyntaxDocument`, `TokenMarker`, `SyntaxStyle`, `SyntaxUtilities`, `KeywordMap`, `InputHandler`/`DefaultInputHandler`, `TextAreaDefaults`, `TextUtilities`.
 - **Токенайзер подсветки**: `jeditsyntax/tokenmarker/RISCVTokenMarker.java`, метод `markTokensImpl()` (посимвольный разбор). Типы токенов в `Token.java`: `COMMENT1, LITERAL1/2, LABEL, KEYWORD1` (инструкции), `KEYWORD2` (директивы), `KEYWORD3` (регистры), `INVALID, MACRO_ARG`. Комментарий — `#` и `//` (кейс `case '/'` с заглядыванием вперёд).
 - Ключевые слова — из `rars.assembler.Directives`, `RegisterFile`, `FloatingPointRegisterFile`, `InstructionSet` (лениво через `getKeywords()`).
@@ -68,10 +70,14 @@ VenusUI (JFrame)
 
 ## 4. Экшены запуска (`rars/venus/run/`)
 
-- `RunAssembleAction.java` — сборка: `Globals.program = new RISCVprogram()`, список файлов по `ASSEMBLE_ALL`/`ASSEMBLE_OPEN`, ассемблирование, сброс `FunctionRun.clear()`, обновление `TextSegmentWindow`, `FileStatus`, `MessagesPane`.
-- `RunGoAction.java` — запуск: проверка `FileStatus.isAssembled()`; `processProgramArgumentsIfAny()` (`TextSegmentWindow.getProgramArguments()` → `new ProgramArgumentList(...).storeProgramArguments()`); при первом запуске — `FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)` (режим «запуск функции»: если нет `main`/`_start` — диалог аргументов; отмена останавливает запуск); анонимный `Observer` на `Simulator.getInstance()` — по `SimulatorNotice.SIMULATOR_STOP` через `EventQueue.invokeLater` вызывает `paused()` (PAUSE/BREAKPOINT) или `stopped()` (NORMAL/CLIFF/EXCEPTION/STOP/MAX_STEPS; при NORMAL — `FunctionRunSupport.reportFunctionResult()` → строка `Execution Done: ...` в Run I/O); затем `Globals.program.startSimulation(maxSteps, breakPoints)`.
+- `RunAssembleAction.java` — сборка: `Globals.program = new RISCVprogram()`, список файлов по `ASSEMBLE_ALL`/`ASSEMBLE_OPEN`, ассемблирование, сброс `FunctionRun.clear()`, обновление `TextSegmentWindow`, `FileStatus`, `MessagesPane`; главная панель переключается на вкладку «Edit», подсветка строки в редакторе снимается (`clearHighlightedLines()`).
+- `RunGoAction.java` — запуск: проверка `FileStatus.isAssembled()`; если `FileStatus == TERMINATED` — сначала авто-Reset (`RunResetAction.performReset(mainUI)`) для перезапуска с начала; `processProgramArgumentsIfAny()` (`TextSegmentWindow.getProgramArguments()` → `new ProgramArgumentList(...).storeProgramArguments()`); при первом запуске — `FunctionRunSupport.prepareFunctionRunIfNeeded(mainUI)` (режим «запуск функции»: если нет `main`/`_start` — диалог аргументов; отмена останавливает запуск); анонимный `Observer` на `Simulator.getInstance()` — по `SimulatorNotice.SIMULATOR_STOP` через `EventQueue.invokeLater` вызывает `paused()` (PAUSE/BREAKPOINT) или `stopped()` (NORMAL/CLIFF/EXCEPTION/STOP/MAX_STEPS; при NORMAL — `FunctionRunSupport.reportFunctionResult()` → строка `Execution Done: ...` в Run I/O); затем `Globals.program.startSimulation(maxSteps, breakPoints)`. В `paused()` подсвечивается строка следующей инструкции в редакторе (`highlightStepSourceLine`), в `stopped()` она снимается (`clearHighlightedLines`).
 - **SwingWorker не используется** (упоминания в старых комментариях устарели): симуляция — `new Thread(new SimThread(...), "RISCV")` в `Simulator.startSimulation()`. GUI-поток общается с ней через `SimulatorNotice` и `Globals.memoryAndRegistersLock`.
-- `RunStepAction` (maxSteps=1; тот же вызов `FunctionRunSupport.prepareFunctionRunIfNeeded`, а при завершении — `reportFunctionResult`), `RunBackstepAction` (`BackStepper.backStep()`), `RunResetAction` (сбрасывает и `FunctionRun.clear()`), `RunClearBreakpointsAction`, `RunSpeedPanel` (слайдер скорости, `speedTable`, `UNLIMITED_SPEED=40`; при unlimited пошаговая подсветка регистров отключается — см. `RegisterBlockWindow.update()`).
+- `RunStepAction` (maxSteps=1): при первом нажатии F7, когда программа ещё не запущена, — состояние «Prepare»: `FunctionRunSupport.prepareFunctionRunIfNeeded` и подсветка первой строки `highlightStepSourceLine(PC)`, **без исполнения инструкции**; последующие F7 исполняют очередную инструкцию. На шаге подсвечивается строка следующей инструкции, при завершении (`done`/исключение) — `clearHighlightedLines()`. Если `FileStatus == TERMINATED` — перед шагом авто-Reset (`RunResetAction.performReset`). При завершении — `reportFunctionResult`.
+- `RunBackstepAction` (`BackStepper.backStep()`; подсвечивает строку в редакторе), `RunResetAction` (сбрасывает и `FunctionRun.clear()`; **логика сброса вынесена в статический `performReset(VenusUI)`** и переиспользуется авто-Reset в `RunGoAction`/`RunStepAction`), `RunClearBreakpointsAction`, `RunSpeedPanel` (слайдер скорости, `speedTable`, `UNLIMITED_SPEED=40`; при unlimited пошаговая подсветка регистров отключается — см. `RegisterBlockWindow.update()`).
+- **Подсветка строки выполнения в редакторе** (вкладка «Edit») управляется методами `VenusUI`: `highlightStep(int)` — подсветка в Text Segment (Execute), `highlightStepSourceLine(int)` — подсветка строки в редакторе (адрес→строка через `ProgramStatement.getAddress()/getSourceLine()/getSourceFile()`), `clearHighlightedLines()` — сброс на всех открытых файлах. Ставится на шаге/паузе/backstep, снимается до старта (Assemble/Reset) и после завершения.
+- В состоянии `TERMINATED` действия Step (F7) и Go (F5) остаются доступными (`setMenuStateTerminated`), поэтому программу можно перезапустить без повторной сборки; повторный запуск начинается с авто-Reset (`RunResetAction.performReset`).
+- **Открытие файла всегда показывает вкладку «Edit»**: `FileOpener.openFile` переключает главную панель на редактор, в том числе для уже открытого файла и при включённой настройке «Assemble on open».
 - `FunctionRunSupport.java` — режим «запуск программы как функции» (нет `main`/`_start`): поиск точки входа (первый текстовый символ глобальной таблицы), парсинг Си-сигнатуры из комментария перед меткой, модальные диалоги аргументов, запись аргументов в `a0`–`a7`/стек, PC и sentinel-`ra`. Подробности — [04-extension-points.md](04-extension-points.md), раздел 3.
 - В `paused()`/`stopped()` вручную обновляются все окна: `executePane.getRegistersWindow().updateRegisters()`, FP, CSR, `DataSegmentWindow.updateValues()`.
 

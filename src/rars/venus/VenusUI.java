@@ -1,9 +1,11 @@
 package rars.venus;
 
 import rars.Globals;
+import rars.ProgramStatement;
 import rars.Settings;
 import rars.riscv.InstructionSet;
 import rars.riscv.dump.DumpFormatLoader;
+import rars.riscv.hardware.RegisterFile;
 import rars.simulator.Simulator;
 import rars.venus.registers.ControlAndStatusWindow;
 import rars.venus.registers.FloatingPointWindow;
@@ -15,6 +17,7 @@ import rars.venus.settings.*;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.File;
 import java.net.URL;
 import java.util.ArrayList;
 
@@ -1204,6 +1207,57 @@ public class VenusUI extends JFrame {
      */
     public Action getRunAssembleAction() {
         return runAssembleAction;
+    }
+
+    /**
+     * Highlights the instruction at the given text segment address in the
+     * Execute tab's Text Segment window.
+     *
+     * @param address Text segment address of the instruction to highlight.
+     */
+    public void highlightStep(int address) {
+        getMainPane().getExecutePane().getTextSegmentWindow().highlightStepAtAddress(address);
+    }
+
+    /**
+     * Highlights in the source editor (Edit tab) the line that corresponds to
+     * the instruction at the given text segment address, i.e. the line that
+     * will be executed at the next step.  Does nothing if the statement or its
+     * source file are not available.
+     *
+     * @param address Text segment address of the instruction to highlight.
+     */
+    public void highlightStepSourceLine(int address) {
+        try {
+            for (ProgramStatement statement : Globals.program.getMachineList()) {
+                if (statement.getAddress() == address) {
+                    String sourceFile = statement.getSourceFile();
+                    if (!sourceFile.isEmpty()) {
+                        EditPane pane = ((EditTabbedPane) getMainPane().getEditTabbedPane())
+                                .getEditPaneForFile(new File(sourceFile).getPath());
+                        int line = statement.getSourceLine();
+                        if (pane != null && line > 0) {
+                            pane.setHighlightedLine(line);
+                        }
+                    }
+                    return;
+                }
+            }
+        } catch (Exception ignored) {
+            // Source mapping unavailable; nothing to highlight.
+        }
+    }
+
+    /**
+     * Clears the step-execution line highlight from the source editor (Edit
+     * tab) of every open file.  Used when execution has not yet started or
+     * has already finished, so no "next line" is highlighted.
+     */
+    public void clearHighlightedLines() {
+        EditTabbedPane editTabbedPane = (EditTabbedPane) getMainPane().getEditTabbedPane();
+        for (int i = 0; i < editTabbedPane.getTabCount(); i++) {
+            ((EditPane) editTabbedPane.getComponentAt(i)).setHighlightedLine(0);
+        }
     }
 
     /**

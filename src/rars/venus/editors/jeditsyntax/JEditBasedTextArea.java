@@ -94,6 +94,20 @@ public class JEditBasedTextArea extends JEditTextArea implements TextEditingArea
     }
 
     /**
+     * Highlights the given source line as a full-width background drawn under
+     * the text (a distinct UI element from the text selection).  Lines are
+     * numbered starting with 1; a value of 0 or less clears the highlight.
+     *
+     * @param line the line to highlight, or 0/negative to clear
+     */
+    public void setHighlightedLine(int line) {
+        getPainter().setExecutionLine(line - 1); // painter uses 0-based line indices
+        if (line > 0) {
+            scrollTo(line - 1, 0);
+        }
+    }
+
+    /**
      * Set the caret blinking rate in milliseconds.  If rate is 0
      * will disable blinking.  If negative, do nothing.
      *

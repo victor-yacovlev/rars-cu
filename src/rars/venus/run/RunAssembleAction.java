@@ -132,7 +132,8 @@ public class RunAssembleAction extends GuiAction {
                 executePane.getDataSegmentWindow().clearHighlighting();
                 executePane.getLabelsWindow().setupTable();
                 executePane.getTextSegmentWindow().setCodeHighlighting(true);
-                executePane.getTextSegmentWindow().highlightStepAtPC();
+                mainUI.highlightStep(RegisterFile.getProgramCounter());
+                mainUI.clearHighlightedLines();
                 registersPane.getRegistersWindow().clearWindow();
                 registersPane.getFloatingPointWindow().clearWindow();
                 registersPane.getControlAndStatusWindow().clearWindow();

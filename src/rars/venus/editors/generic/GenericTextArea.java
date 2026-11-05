@@ -13,7 +13,12 @@ import javax.swing.undo.CannotRedoException;
 import javax.swing.undo.CannotUndoException;
 import javax.swing.undo.CompoundEdit;
 import javax.swing.undo.UndoManager;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultHighlighter;
+import javax.swing.text.Element;
+import javax.swing.text.JTextComponent;
 import java.awt.*;
+import java.awt.geom.Rectangle2D;
 
 /*
 Copyright (c) 2003-2010,  Pete Sanderson and Kenneth Vollmar
@@ -102,6 +107,69 @@ public class GenericTextArea extends JTextArea implements TextEditingArea {
      * highlighting of the line currently being edited.
      */
     public void setLineHighlightEnabled(boolean highlight) {
+    }
+
+    // Highlighter tag for the line currently highlighted (null if none).
+    private Object lineHighlightTag;
+    private final FullLineHighlightPainter lineHighlightPainter =
+            new FullLineHighlightPainter(new Color(0xFFFFCC));
+
+    /**
+     * Highlights the given source line as a full-width background drawn under
+     * the text (a distinct UI element from the text selection).  Lines are
+     * numbered starting with 1; a value of 0 or less clears the highlight.
+     *
+     * @param line the line to highlight, or 0/negative to clear
+     */
+    public void setHighlightedLine(int line) {
+        if (lineHighlightTag != null) {
+            getHighlighter().removeHighlight(lineHighlightTag);
+            lineHighlightTag = null;
+        }
+        if (line > 0) {
+            Element root = getDocument().getDefaultRootElement();
+            if (line <= root.getElementCount()) {
+                Element lineElement = root.getElement(line - 1);
+                int start = lineElement.getStartOffset();
+                int end = lineElement.getEndOffset();
+                if (end > start) {
+                    try {
+                        lineHighlightTag = getHighlighter().addHighlight(start, end, lineHighlightPainter);
+                    } catch (BadLocationException e) {
+                        // ignore; nothing to highlight
+                    }
+                }
+                try {
+                    Rectangle2D r = modelToView2D(start);
+                    scrollRectToVisible(new Rectangle(0, (int) r.getY(), getWidth(), (int) r.getHeight()));
+                } catch (BadLocationException e) {
+                    // ignore
+                }
+            }
+        }
+    }
+
+    /**
+     * Paints a full-width background rectangle behind the text of a single
+     * line, producing a line highlight that is visually distinct from the
+     * text selection.
+     */
+    private static class FullLineHighlightPainter extends DefaultHighlighter.DefaultHighlightPainter {
+        FullLineHighlightPainter(Color color) {
+            super(color);
+        }
+
+        @Override
+        public void paint(Graphics g, int offs0, int offs1, Shape bounds, JTextComponent c) {
+            try {
+                Rectangle2D r = c.modelToView2D(offs0);
+                g.setColor(getColor());
+                g.fillRect(0, (int) r.getY(), c.getWidth(),
+                        c.getFontMetrics(c.getFont()).getHeight());
+            } catch (BadLocationException e) {
+                super.paint(g, offs0, offs1, bounds, c);
+            }
+        }
     }
 
     /**

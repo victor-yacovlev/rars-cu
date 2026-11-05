@@ -530,6 +530,33 @@ public class TextAreaPainter extends JComponent implements TabExpander {
 
     protected Highlight highlights;
 
+    // Line (0-based) drawn as a full-width background highlight under the text.
+    // -1 means no such line is highlighted.  Distinct from the text selection.
+    protected int executionLine = -1;
+    protected Color executionLineColor = new Color(0xFFFFCC);
+
+    /**
+     * Sets the line (0-based) to draw as a full-width background highlight
+     * under the text, or -1 to clear it.  This is used to indicate the source
+     * line that will be executed at the next step and is a distinct UI element
+     * from the text selection.
+     *
+     * @param line the 0-based line index to highlight, or -1 to clear
+     */
+    public void setExecutionLine(int line) {
+        if (line == executionLine) {
+            return;
+        }
+        int oldLine = executionLine;
+        executionLine = line;
+        if (oldLine >= 0) {
+            invalidateLine(oldLine);
+        }
+        if (line >= 0) {
+            invalidateLine(line);
+        }
+    }
+
     protected void paintLine(Graphics gfx, TokenMarker tokenMarker,
                              int line, int x) {//System.out.println("paintLine "+ (++count));
         Font defaultFont = getFont();
@@ -602,6 +629,9 @@ public class TextAreaPainter extends JComponent implements TabExpander {
                 && line <= textArea.getSelectionEndLine())
             paintLineHighlight(gfx, line, y);
 
+        if (executionLine == line)
+            paintExecutionLine(gfx, line, y);
+
         if (highlights != null)
             highlights.paintHighlight(gfx, line, y);
 
@@ -610,6 +640,17 @@ public class TextAreaPainter extends JComponent implements TabExpander {
 
         if (line == textArea.getCaretLine())
             paintCaret(gfx, line, y);
+    }
+
+    /**
+     * Draws a full-width background rectangle behind the text of the given
+     * line, highlighting the source line that will be executed at the next
+     * step.  Painted before the text so it appears under the glyphs.
+     */
+    protected void paintExecutionLine(Graphics gfx, int line, int y) {
+        int height = fm.getHeight();
+        gfx.setColor(executionLineColor);
+        gfx.fillRect(0, y + fm.getLeading() + fm.getMaxDescent(), getWidth(), height);
     }
 
     protected void paintLineHighlight(Graphics gfx, int line, int y) {//System.out.println("paintLineHighlight "+ (++count));
