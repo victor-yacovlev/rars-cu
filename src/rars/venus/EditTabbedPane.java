@@ -589,6 +589,10 @@ public class EditTabbedPane extends JTabbedPane {
                 if (theFile.canRead() && Globals.getSettings().getBooleanSetting(Settings.Bool.ASSEMBLE_ON_OPEN)) {
                     mainUI.getRunAssembleAction().actionPerformed(null);
                 }
+
+                // Opening a file always brings up the editor, even if the
+                // automatic assembly above switched to the Execute tab.
+                mainPane.setSelectedComponent(EditTabbedPane.this);
             }
             return true;
         }
@@ -610,6 +614,9 @@ public class EditTabbedPane extends JTabbedPane {
                 setSelectedComponent(editPane);
                 //updateTitlesAndMenuState(editPane);
                 updateTitles(editPane);
+                // Opening a file always brings up the editor, even if the
+                // file is already open and the user is on the Execute tab.
+                mainPane.setSelectedComponent(EditTabbedPane.this);
                 return false;
             } else {
                 editPane = new EditPane(mainUI);

@@ -3,6 +3,7 @@ package rars.venus;
 import rars.ErrorList;
 import rars.Globals;
 import rars.simulator.Simulator;
+import rars.venus.util.PopupListener;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -47,12 +48,14 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
- * Creates the message window at the bottom of the UI.
+ * Creates the message window at the bottom of the UI.  The assembler
+ * ("Messages") and runtime ("Run I/O") areas are shown side by side rather
+ * than as tabs.  Each area can be cleared via its right-click context menu.
  *
  * @author Team JSpim
  **/
 
-public class MessagesPane extends JTabbedPane {
+public class MessagesPane extends JSplitPane {
     JTextArea assemble, run;
     private JPanel assembleTab, runTab;
     // These constants are designed to keep scrolled contents of the
@@ -65,11 +68,12 @@ public class MessagesPane extends JTabbedPane {
     public static final int NUMBER_OF_CHARACTERS_TO_CUT = Globals.maximumMessageCharacters / 10; // 10%
 
     /**
-     * Constructor for the class, sets up two fresh tabbed text areas for program feedback.
+     * Constructor for the class, sets up two fresh side-by-side text areas
+     * for program feedback.
      **/
 
     public MessagesPane() {
-        super();
+        super(JSplitPane.HORIZONTAL_SPLIT);
         this.setMinimumSize(new Dimension(0, 0));
         assemble = new JTextArea();
         run = new JTextArea();
@@ -83,16 +87,10 @@ public class MessagesPane extends JTabbedPane {
         assemble.setFont(monoFont);
         run.setFont(monoFont);
 
-        JButton assembleTabClearButton = new JButton("Clear");
-        assembleTabClearButton.setToolTipText("Clear the Messages area");
-        assembleTabClearButton.addActionListener(
-                new ActionListener() {
-                    public void actionPerformed(ActionEvent e) {
-                        assemble.setText("");
-                    }
-                });
         assembleTab = new JPanel(new BorderLayout());
-        assembleTab.add(createBoxForButton(assembleTabClearButton), BorderLayout.WEST);
+        JLabel assembleTitle = new JLabel("Messages");
+        assembleTitle.setToolTipText("Messages produced by Run menu. Click on assemble error message to select erroneous line");
+        assembleTab.add(assembleTitle, BorderLayout.NORTH);
         assembleTab.add(new JScrollPane(assemble, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER);
         assemble.addMouseListener(
@@ -159,38 +157,38 @@ public class MessagesPane extends JTabbedPane {
                     }
                 });
 
-        JButton runTabClearButton = new JButton("Clear");
-        runTabClearButton.setToolTipText("Clear the Run I/O area");
-        runTabClearButton.addActionListener(
-                new ActionListener() {
-                    public void actionPerformed(ActionEvent e) {
-                        run.setText("");
-                    }
-                });
+        installClearContextMenu(assemble, "Clear the Messages area");
+        installClearContextMenu(run, "Clear the Run I/O area");
+
         runTab = new JPanel(new BorderLayout());
-        runTab.add(createBoxForButton(runTabClearButton), BorderLayout.WEST);
+        JLabel runTitle = new JLabel("Run I/O");
+        runTitle.setToolTipText("Simulated console input and output");
+        runTab.add(runTitle, BorderLayout.NORTH);
         runTab.add(new JScrollPane(run, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER);
 
-        this.addTab("Messages", assembleTab);
-        this.addTab("Run I/O", runTab);
+        this.setLeftComponent(assembleTab);
+        this.setRightComponent(runTab);
         this.setForeground(Color.BLACK);
-
-        this.setToolTipTextAt(0, "Messages produced by Run menu. Click on assemble error message to select erroneous line");
-        this.setToolTipTextAt(1, "Simulated console input and output");
+        this.setResizeWeight(0.5);
+        this.setOneTouchExpandable(true);
+        this.resetToPreferredSizes();
     }
 
-    // Center given button in a box, centered vertically and 6 pixels on left and right
-    private Box createBoxForButton(JButton button) {
-        Box buttonRow = Box.createHorizontalBox();
-        buttonRow.add(Box.createHorizontalStrut(6));
-        buttonRow.add(button);
-        buttonRow.add(Box.createHorizontalStrut(6));
-        Box buttonBox = Box.createVerticalBox();
-        buttonBox.add(Box.createVerticalGlue());
-        buttonBox.add(buttonRow);
-        buttonBox.add(Box.createVerticalGlue());
-        return buttonBox;
+    // Adds a right-click context menu with a "Clear" item to the given text
+    // area.  Replaces the "Clear" buttons that previously occupied UI space.
+    private void installClearContextMenu(final JTextArea area, String toolTip) {
+        area.setToolTipText(toolTip);
+        JPopupMenu popup = new JPopupMenu();
+        JMenuItem clearItem = new JMenuItem("Clear");
+        clearItem.addActionListener(
+                new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        area.setText("");
+                    }
+                });
+        popup.add(clearItem);
+        area.addMouseListener(new PopupListener(popup));
     }
 
     /**
@@ -294,7 +292,6 @@ public class MessagesPane extends JTabbedPane {
             }
         }
         assemble.setCaretPosition(assemble.getDocument().getLength());
-        setSelectedComponent(assembleTab);
     }
 
     /**
@@ -313,7 +310,6 @@ public class MessagesPane extends JTabbedPane {
         SwingUtilities.invokeLater(
                 new Runnable() {
                     public void run() {
-                        setSelectedComponent(runTab);
                         run.append(mess);
                         // can do some crude cutting here.  If the document gets "very large",
                         // let's cut off the oldest text. This will limit scrolling but the limit
@@ -330,17 +326,19 @@ public class MessagesPane extends JTabbedPane {
     }
 
     /**
-     * Make the assembler message tab current (up front)
+     * Bring the assembler message area to attention.  Since both areas are
+     * always visible (shown side by side), this is a no-op retained for API
+     * compatibility.
      */
     public void selectMessageTab() {
-        setSelectedComponent(assembleTab);
     }
 
     /**
-     * Make the runtime message tab current (up front)
+     * Bring the runtime message area to attention.  Since both areas are
+     * always visible (shown side by side), this is a no-op retained for API
+     * compatibility.
      */
     public void selectRunMessageTab() {
-        setSelectedComponent(runTab);
     }
 
     /**
