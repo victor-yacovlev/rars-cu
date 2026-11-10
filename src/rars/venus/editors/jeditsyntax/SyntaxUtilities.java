@@ -94,7 +94,7 @@ public class SyntaxUtilities {
         // SyntaxStyle constructor params: color, italic?, bold?
         // All need to be assigned even if not used by language (no gaps in array)
         styles[Token.NULL] = new SyntaxStyle(Color.black, false, false);
-        styles[Token.COMMENT1] = new SyntaxStyle(new Color(0x00CC33), true, false);//(Color.black,true,false);
+        styles[Token.COMMENT1] = new SyntaxStyle(new Color(0x008029), true, false);//(Color.black,true,false);
         styles[Token.COMMENT2] = new SyntaxStyle(new Color(0x990033), true, false);
         styles[Token.KEYWORD1] = new SyntaxStyle(Color.blue, false, false);//(Color.black,false,true);
         styles[Token.KEYWORD2] = new SyntaxStyle(Color.magenta, false, false);

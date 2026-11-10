@@ -1008,10 +1008,27 @@ public class Settings extends Observable {
     /** Takes a color from the LookAndFeel */
     static class LookAndFeelColor implements SystemColorProvider {
         private final String key;
-        public LookAndFeelColor(String key) {this.key = key; }
+        private final Color fallback;
+        private final String[] alternateKeys;
+        public LookAndFeelColor(String key, Color fallback, String... alternateKeys) {
+            this.key = key;
+            this.fallback = fallback;
+            this.alternateKeys = alternateKeys;
+        }
         public Color getColor() {
+            // Some look-and-feels (e.g. Nimbus) do not define all standard
+            // per-component color keys, so try alternate keys and finally a
+            // constant instead of returning null.
+            UIDefaults defaults = UIManager.getLookAndFeel().getDefaults();
+            Color color = defaults.getColor(key);
+            for (int i = 0; color == null && i < alternateKeys.length; i++) {
+                color = defaults.getColor(alternateKeys[i]);
+            }
+            if (color == null) {
+                color = fallback;
+            }
             // Deep copy, because using the color directly in UI caused problems
-            return new Color(UIManager.getLookAndFeel().getDefaults().getColor(key).getRGB());
+            return new Color(color.getRGB());
         }
     }
 
@@ -1055,10 +1072,10 @@ public class Settings extends Observable {
 
     private void initSystemProviders() {
         systemColors = new SystemColorProvider[colorSettingsKeys.length];
-        systemColors[EDITOR_BACKGROUND] = new LookAndFeelColor("TextArea.background");
-        systemColors[EDITOR_FOREGROUND] = new LookAndFeelColor("TextArea.foreground");
-        systemColors[EDITOR_SELECTION_COLOR] = new LookAndFeelColor("TextArea.selectionBackground");
-        systemColors[EDITOR_CARET_COLOR] = new LookAndFeelColor("TextArea.caretForeground");
+        systemColors[EDITOR_BACKGROUND] = new LookAndFeelColor("TextArea.background", Color.WHITE, "nimbusLightBackground");
+        systemColors[EDITOR_FOREGROUND] = new LookAndFeelColor("TextArea.foreground", Color.BLACK, "text");
+        systemColors[EDITOR_SELECTION_COLOR] = new LookAndFeelColor("TextArea.selectionBackground", new Color(204, 204, 255), "textHighlight", "nimbusSelectionBackground");
+        systemColors[EDITOR_CARET_COLOR] = new LookAndFeelColor("TextArea.caretForeground", Color.BLACK, "TextArea.foreground", "text");
         // Mixes based on the system-color of the background and selection-color
         systemColors[EDITOR_LINE_HIGHLIGHT] = new ColorProviderMix(systemColors[EDITOR_SELECTION_COLOR], systemColors[EDITOR_BACKGROUND], 0.2f);
         // Mixes based on the set color of the background and selection-color

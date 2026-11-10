@@ -201,7 +201,10 @@ public class EditPane extends JPanel implements Observer {
 
         lineNumbers.setFont(getLineNumberFont(sourceCode.getFont()));
         lineNumbers.setVerticalAlignment(JLabel.TOP);
-        lineNumbers.setText("");
+        // Populate from the (empty) document right away: setting empty text on
+        // the area fires no insert event, so the DocumentListener below would
+        // never run for a freshly created file and the margin would collapse.
+        lineNumbers.setText(getLineNumbersList(sourceCode.getDocument()));
         lineNumbers.setVisible(true);
         applyLineNumbersStyle();
         // Clicking a line number toggles a breakpoint for that line (if the
